@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-from typing import Optional, cast
+from typing import Callable, Optional, cast
 
 import torch
 
@@ -25,10 +25,13 @@ class D3PMAncestralSamplingPredictor(Predictor):
         corruption: D3PMCorruption,
         score_fn: ScoreFunction,
         predict_x0: bool = True,
+        constrain_fn: Optional[Callable] = None,
     ):
         super().__init__(corruption=corruption, score_fn=score_fn)
         # if True, self.denoiser returns p(x_0|x_t), otherwise p(x_{t-1}|x_t)
         self.predict_x0 = predict_x0
+        # Optional inference-time constraint: (logits, x_t, t, batch_idx) -> logits
+        self.constrain_fn = constrain_fn
 
     @classmethod
     def is_compatible(cls, corruption: Corruption) -> bool:
@@ -65,6 +68,11 @@ class D3PMAncestralSamplingPredictor(Predictor):
         t = to_discrete_time(t=t, N=self.N, T=self.corruption.T)
 
         class_logits = score
+
+        # Apply optional inference-time constraint (e.g. charge-neutrality SPL).
+        # x is still 1-based here; the constraint function handles the offset internally.
+        if self.constrain_fn is not None:
+            class_logits = self.constrain_fn(class_logits, x, t, batch_idx)
 
         assert isinstance(self.corruption, D3PMCorruption)
 

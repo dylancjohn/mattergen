@@ -57,6 +57,7 @@ dependencies = [
 "matscipy>=0.7.0",
 "mattersim>=1.1",
 "monty==2024.7.30 ",  # keep up-to-date together with pymatgen, atomate2
+"neutral-layer",  # charge-neutrality / species-vocab constraint machinery
 "notebook>=7.2.2",
 "numpy<2.0",  # pin numpy before breaking changes in 2.0
 "omegaconf==2.3.0",
@@ -97,6 +98,7 @@ include = ["mattergen*"]
 "*" = ["**.yaml", "**.csv", "**.pt", "**.json"]
 
 [tool.uv.sources]
+neutral-layer = { path = "../os-aware-generation/generation", editable = true }
 torch = { index = "pytorch_linux",  marker = "sys_platform == 'linux'" }
 torchvision = { index = "pytorch_linux",  marker = "sys_platform == 'linux'" }
 torchaudio = { index = "pytorch_linux",  marker = "sys_platform == 'linux'" }

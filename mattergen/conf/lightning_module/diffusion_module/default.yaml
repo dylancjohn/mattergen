@@ -6,6 +6,7 @@ loss_fn:
   include_cell: True
   include_atomic_numbers: True
   d3pm_hybrid_lambda: 0.01
+  use_spl_loss: false
   weights:
     cell: 1.0
     pos: 0.1

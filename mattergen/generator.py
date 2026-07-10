@@ -12,6 +12,7 @@ import hydra
 import torch
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
+from pymatgen.core import Element, Species as PmgSpecies
 from pymatgen.core.structure import Structure
 from pymatgen.io.ase import AseAtomsAdaptor
 from tqdm import tqdm
@@ -33,6 +34,7 @@ from mattergen.common.utils.globals import DEFAULT_SAMPLING_CONFIG_PATH, get_dev
 from mattergen.diffusion.lightning_module import DiffusionLightningModule
 from mattergen.diffusion.sampling.pc_sampler import PredictorCorrector
 from mattergen.common.utils.data_classes import ProgressCallback
+from neutral_layer.vocab import SpeciesVocab
 
 
 def draw_samples_from_sampler(
@@ -43,6 +45,7 @@ def draw_samples_from_sampler(
     cfg: DictConfig | None = None,
     record_trajectories: bool = True,
     progress_callback: ProgressCallback | None = None,
+    species_vocab: SpeciesVocab | None = None,
 ) -> list[Structure]:
 
     # Dict
@@ -80,6 +83,7 @@ def draw_samples_from_sampler(
         all_samples["lengths"].reshape(-1, 3),
         all_samples["angles"].reshape(-1, 3),
         all_samples["num_atoms"].reshape(-1),
+        species_vocab=species_vocab,
     )
 
     if output_path is not None:
@@ -92,6 +96,7 @@ def draw_samples_from_sampler(
             dump_trajectories(
                 output_path=output_path,
                 all_trajs_list=all_trajs_list,
+                species_vocab=species_vocab,
             )
 
     return generated_strucs
@@ -120,13 +125,14 @@ def list_of_time_steps_to_list_of_trajectories(
 def dump_trajectories(
     output_path: Path,
     all_trajs_list: list[list[ChemGraph]],
+    species_vocab: SpeciesVocab | None = None,
 ) -> None:
     try:
         # We gather all trajectories in a single zip file as .extxyz files.
         # This way we can view them easily after downloading.
         with ZipFile(output_path / "generated_trajectories.zip", "w") as zip_obj:
             for ix, traj in enumerate(all_trajs_list):
-                strucs = structures_from_trajectory(traj)
+                strucs = structures_from_trajectory(traj, species_vocab=species_vocab)
                 ase_atoms = [AseAtomsAdaptor.get_atoms(crystal) for crystal in strucs]
                 str_io = io.StringIO()
                 ase.io.write(str_io, ase_atoms, format="extxyz")
@@ -139,27 +145,62 @@ def dump_trajectories(
 
 
 def structure_from_model_output(
-    frac_coords, atom_types, lengths, angles, num_atoms
+    frac_coords,
+    atom_types,
+    lengths,
+    angles,
+    num_atoms,
+    species_vocab: SpeciesVocab | None = None,
 ) -> list[Structure]:
-    structures = [
-        make_structure(
-            lengths=d["lengths"],
-            angles=d["angles"],
-            atom_types=d["atom_types"],
-            frac_coords=d["frac_coords"],
+    """Convert model output tensors to pymatgen Structures.
+
+    Parameters
+    ----------
+    frac_coords : Tensor, shape (N_atoms, 3)
+    atom_types : Tensor, shape (N_atoms,)
+        1-based atomic numbers (element model) or 1-based species vocab indices
+        (species model). If species_vocab is provided, indices are decoded to
+        pymatgen Species objects so oxidation state is preserved in the output.
+    lengths : Tensor, shape (N_crystals, 3)
+    angles : Tensor, shape (N_crystals, 3)
+    num_atoms : Tensor, shape (N_crystals,)
+    species_vocab : SpeciesVocab, optional
+        When provided, atom_types are treated as species vocab indices and converted
+        to pymatgen.core.Species objects (element + oxidation state). When None,
+        atom_types are treated as plain atomic numbers (original element model).
+    """
+    structures = []
+    for d in get_crystals_list(
+        frac_coords.cpu(),
+        atom_types.cpu(),
+        lengths.cpu(),
+        angles.cpu(),
+        num_atoms.cpu(),
+    ):
+        types = d["atom_types"]
+        if species_vocab is not None:
+            types = [
+                PmgSpecies(
+                    Element.from_Z(species_vocab.atomic_number_of(int(idx))),
+                    species_vocab.oxidation_state_of(int(idx)),
+                )
+                for idx in types
+            ]
+        structures.append(
+            make_structure(
+                lengths=d["lengths"],
+                angles=d["angles"],
+                atom_types=types,
+                frac_coords=d["frac_coords"],
+            )
         )
-        for d in get_crystals_list(
-            frac_coords.cpu(),
-            atom_types.cpu(),
-            lengths.cpu(),
-            angles.cpu(),
-            num_atoms.cpu(),
-        )
-    ]
     return structures
 
 
-def structures_from_trajectory(traj: list[ChemGraph]) -> list[Structure]:
+def structures_from_trajectory(
+    traj: list[ChemGraph],
+    species_vocab: SpeciesVocab | None = None,
+) -> list[Structure]:
     all_strucs = []
     for batch in traj:
         cell = batch.cell
@@ -171,6 +212,7 @@ def structures_from_trajectory(traj: list[ChemGraph]) -> list[Structure]:
                 lengths=lengths,
                 angles=angles,
                 num_atoms=batch.num_atoms,
+                species_vocab=species_vocab,
             )
         )
 
@@ -203,6 +245,11 @@ class CrystalGenerator:
     sampling_config_name: str = "default"
 
     record_trajectories: bool = True  # store all intermediate samples by default
+
+    # When set, atom_types in model output are treated as species vocab indices and
+    # converted to pymatgen Species objects (element + oxidation state). Required for
+    # the species model; leave None for the original element model.
+    species_vocab: SpeciesVocab | None = None
 
     # These attributes are set when prepare() method is called.
     _model: DiffusionLightningModule | None = None
@@ -387,6 +434,7 @@ class CrystalGenerator:
             properties_to_condition_on=self.properties_to_condition_on,
             record_trajectories=self.record_trajectories,
             progress_callback=self.progress_callback,
+            species_vocab=self.species_vocab,
         )
 
         return generated_structures

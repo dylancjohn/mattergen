@@ -14,6 +14,7 @@ import numpy as np
 import torch
 from pymatgen.core import Lattice, Structure
 from pymatgen.io.ase import AseAtomsAdaptor
+from pymatgen.io.cif import CifWriter
 
 from mattergen.common.globals import (
     GENERATED_CRYSTALS_EXTXYZ_FILE_NAME,
@@ -106,6 +107,10 @@ def get_crystals_list(
 def save_structures(output_path: Path, structures: Sequence[Structure]) -> None:
     """Save structures to disk in a extxyz file and a compressed zip file containing cif files.
 
+    CIF files are written via pymatgen's CifWriter so that oxidation states on
+    Species sites are preserved in the _atom_site_type_symbol column. The extxyz
+    file is written via ASE and does not carry oxidation state information.
+
     Args:
         output_path: path to a directory where the results are written.
         structures: sequence of structures.
@@ -115,9 +120,10 @@ def save_structures(output_path: Path, structures: Sequence[Structure]) -> None:
         ase.io.write(output_path / GENERATED_CRYSTALS_EXTXYZ_FILE_NAME, ase_atoms)
 
         with ZipFile(output_path / GENERATED_CRYSTALS_ZIP_FILE_NAME, "w") as zip_obj:
-            for ix, ase_atom in enumerate(ase_atoms):
-                ase.io.write(f"/tmp/gen_{ix}.cif", ase_atom, format="cif")
-                zip_obj.write(f"/tmp/gen_{ix}.cif", arcname=f"gen_{ix}.cif")
+            for ix, structure in enumerate(structures):
+                cif_path = f"/tmp/gen_{ix}.cif"
+                CifWriter(structure).write_file(cif_path)
+                zip_obj.write(cif_path, arcname=f"gen_{ix}.cif")
     except IOError as e:
         print(f"Got error {e} writing the generated structures to disk.")
 

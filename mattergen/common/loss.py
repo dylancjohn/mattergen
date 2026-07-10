@@ -19,6 +19,7 @@ class MaterialsLoss(SummedFieldLoss):
         include_cell: bool = True,
         include_atomic_numbers: bool = True,
         weights: Optional[Dict[str, float]] = None,
+        use_spl_loss: bool = False,
     ):
         model_targets = {"pos": ModelTarget.score_times_std, "cell": ModelTarget.score_times_std}
         self.fields_to_score = []
@@ -42,10 +43,18 @@ class MaterialsLoss(SummedFieldLoss):
             model_targets["atomic_numbers"] = ModelTarget.logits
             self.fields_to_score.append("atomic_numbers")
             self.categorical_fields.append("atomic_numbers")
+
+            logits_projection_fn = None
+            if use_spl_loss:
+                from neutral_layer.spl import make_spl_projection_fn
+
+                logits_projection_fn = make_spl_projection_fn()
+
             loss_fns["atomic_numbers"] = partial(
                 d3pm_loss,
                 reduce=reduce,
                 d3pm_hybrid_lambda=d3pm_hybrid_lambda,
+                logits_projection_fn=logits_projection_fn,
             )
         self.reduce = reduce
         self.d3pm_hybrid_lambda = d3pm_hybrid_lambda

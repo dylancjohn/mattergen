@@ -5,6 +5,7 @@ import json
 import logging
 
 import hydra
+import mattergen.constraints.resolvers  # registers the species_vocab_size OmegaConf resolver
 import omegaconf
 import torch
 from omegaconf import OmegaConf

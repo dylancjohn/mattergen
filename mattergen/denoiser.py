@@ -179,6 +179,7 @@ class GemNetTDenoiser(ScoreModel):
             "mask",
             "uniform",
         ][0],
+        num_atom_types: int = MAX_ATOMIC_NUM,
         property_embeddings: torch.nn.ModuleDict | None = None,
         property_embeddings_adapt: torch.nn.ModuleDict | None = None,
         element_mask_func: Callable | None = None,
@@ -191,6 +192,8 @@ class GemNetTDenoiser(ScoreModel):
             hidden_dim (int, optional): Number of hidden dimensions in the GemNet. Defaults to 128.
             denoise_atom_types (bool, optional): Whether to denoise the atom  types. Defaults to False.
             atom_type_diffusion (str, optional): Which type of atom type diffusion to use. Defaults to "mask".
+            num_atom_types (int, optional): Vocabulary size for atom type logits, excluding the MASK token.
+                Use ``MAX_ATOMIC_NUM`` (default) for element-only mode or ``vocab.num_species`` for species mode.
             condition_on (Optional[List[str]], optional): Which aspects of the data to condition on. Strings must be in ["property", "chemical_system"]. If None (default), condition on ["chemical_system"].
         """
         super(GemNetTDenoiser, self).__init__()
@@ -205,7 +208,7 @@ class GemNetTDenoiser(ScoreModel):
         self.property_embeddings = torch.nn.ModuleDict(property_embeddings or {})
 
         with_mask_type = self.denoise_atom_types and "mask" in self.atom_type_diffusion
-        self.fc_atom = nn.Linear(hidden_dim, MAX_ATOMIC_NUM + int(with_mask_type))
+        self.fc_atom = nn.Linear(hidden_dim, num_atom_types + int(with_mask_type))
 
         self.element_mask_func = element_mask_func
 
