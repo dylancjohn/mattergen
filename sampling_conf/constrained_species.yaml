@@ -21,7 +21,7 @@ sampler_partial:
       predict_x0: True
       _partial_: true
       constrain_fn:
-        _target_: neutral_layer.spl.make_spl_constraint_fn
+        _target_: neutral_layer.generation.spl.make_spl_constraint_fn
 
   corrector_partials:
     pos:

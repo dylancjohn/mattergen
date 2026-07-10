@@ -34,7 +34,7 @@ from mattergen.common.utils.globals import DEFAULT_SAMPLING_CONFIG_PATH, get_dev
 from mattergen.diffusion.lightning_module import DiffusionLightningModule
 from mattergen.diffusion.sampling.pc_sampler import PredictorCorrector
 from mattergen.common.utils.data_classes import ProgressCallback
-from neutral_layer.vocab import SpeciesVocab
+from neutral_layer.data.vocab import SpeciesVocab
 
 
 def draw_samples_from_sampler(

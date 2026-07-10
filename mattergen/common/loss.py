@@ -46,7 +46,7 @@ class MaterialsLoss(SummedFieldLoss):
 
             logits_projection_fn = None
             if use_spl_loss:
-                from neutral_layer.spl import make_spl_projection_fn
+                from neutral_layer.generation.spl import make_spl_projection_fn
 
                 logits_projection_fn = make_spl_projection_fn()
 

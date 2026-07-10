@@ -7,17 +7,27 @@ rather than raw atomic numbers. Preserving the 1-based convention means AtomEmbe
 (which applies Z - 1) and D3PMCorruption (offset=1) are unchanged; only the vocab
 size in model config needs to differ.
 
-Six filters are applied at load time, mirroring the pipeline used by ICSDStructureDataset
-in neurosymbolic-bertos with one deliberate difference for alloys:
-  1. max atoms — drop oversized structures
-  2. alloy check — keep metallic-only structures only if every atom has OS=0
-  3. single-species — drop elemental compounds
-  4. unknown (z, os) pairs — drop structures with species absent from the vocabulary
-  5. charge neutrality — always drop non-neutral structures (log_z = -inf in SPL)
-  6. MV element registry — drop structures where a non-MV element carries >1 distinct OS
+Six rules are validated at load time (vectorized over the whole dataset with numpy,
+not per-record — this data should already have been through preprocessing), mirroring
+the pipeline in neutral_layer.data.filtering with one deliberate difference for alloys:
+  1. max atoms — reject oversized structures
+  2. alloy check — metallic-only structures are only valid if every atom has OS=0
+     (unlike neutral_layer.data.filtering's check_not_alloy/AlloyCompoundError, which
+     rejects all pure-metal compounds outright: this vocabulary includes OS=0 as an
+     admissible class for metals, so an alloy with OS=0 is a legitimate record)
+  3. single-species — reject elemental compounds
+  4. unknown (z, os) pairs — reject structures with species absent from the vocabulary
+  5. charge neutrality — reject non-neutral structures (log_z = -inf in SPL)
+  6. MV element registry — reject structures where a non-MV element carries >1 distinct OS
+
+A structure violating any rule raises immediately (see the DatasetValidationError
+subclasses below) rather than being silently dropped, since violations indicate a
+preprocessing bug once this data is expected to already be filtered.
 
 Modules:
     SpeciesCrystalDataset — dataset that maps (atomic_number, os) pairs to species indices.
+    AlloyNonZeroOxidationStateError — raised by the alloy check (rule 2)
+    UnknownSpeciesError             — raised by the unknown-(z,os)-pair check (rule 4)
 """
 
 from __future__ import annotations
@@ -36,30 +46,36 @@ from mattergen.common.data.chemgraph import ChemGraph
 from mattergen.common.data.dataset import CORE_STRUCTURE_FILE_NAMES, BaseDataset
 from mattergen.common.data.transform import Transform
 from mattergen.common.data.types import PropertySourceId, PropertyValues
-from mattergen.common.utils.globals import PROPERTY_SOURCE_IDS
-from neutral_layer.vocab import MIXED_VALENCE_ELEMENTS, SpeciesVocab
+from mattergen.common.utils.globals import MAX_ATOMIC_NUM, PROPERTY_SOURCE_IDS
+from neutral_layer.data.classifiers import METAL_ATOMIC_NUMBERS
+from neutral_layer.data.filtering import (
+    ChargeNonNeutralError,
+    DatasetValidationError,
+    MaxAtomsExceededError,
+    MixedValenceViolationError,
+    SingleSpeciesError,
+)
+from neutral_layer.data.vocab import MIXED_VALENCE_ELEMENTS, OS_VALUES, SpeciesVocab
 
 OXIDATION_STATES_FILE = "oxidation_states.npy"
 
 
-# Pymatgen metals by atomic number — used by the alloy filter.
-# Import deferred to avoid a module-level pymatgen parse on every import.
-def _build_metal_atomic_numbers() -> frozenset[int]:
-    from pymatgen.core import Element as _PmgElement
-
-    return frozenset(e.Z for e in _PmgElement if e.is_metal)
+class AlloyNonZeroOxidationStateError(DatasetValidationError):
+    """Raised when a metallic-only structure has a non-zero OS on some atom."""
 
 
-_METAL_ATOMIC_NUMBERS: frozenset[int] = _build_metal_atomic_numbers()
+class UnknownSpeciesError(DatasetValidationError):
+    """Raised when a structure contains an (atomic_number, OS) pair absent from the vocab."""
 
-# Bounds matching OS_VALUES in vocab.py: -5 to +8.
-_OS_MIN: int = -5
-_OS_MAX: int = 8
+
+# Bounds matching neutral_layer.data.vocab.OS_VALUES (single source of truth).
+_OS_MIN: int = min(OS_VALUES)
+_OS_MAX: int = max(OS_VALUES)
 _OS_OFFSET: int = -_OS_MIN  # shift so _OS_MIN maps to column 0
 _OS_COLS: int = _OS_MAX - _OS_MIN + 1  # 14 columns
 
-# Upper bound on atomic numbers; matches MAX_ATOMIC_NUM in globals.
-_Z_MAX: int = 100
+# Upper bound on atomic numbers; matches MAX_ATOMIC_NUM in mattergen.common.utils.globals.
+_Z_MAX: int = MAX_ATOMIC_NUM
 
 
 def _build_species_indices(
@@ -208,7 +224,6 @@ class SpeciesCrystalDataset(BaseDataset):
         vocab: SpeciesVocab,
         transforms: list[Transform] | None = None,
         properties: list[PropertySourceId] | None = None,
-        filter_unknown_species: bool = True,
         max_atoms: int = 200,
         mv_elements: frozenset[str] | None = MIXED_VALENCE_ELEMENTS,
     ) -> "SpeciesCrystalDataset":
@@ -216,8 +231,11 @@ class SpeciesCrystalDataset(BaseDataset):
 
         Reads the standard MatterGen files (pos.npy, cell.npy, atomic_numbers.npy,
         num_atoms.npy, structure_id.npy) plus oxidation_states.npy, then maps each
-        (atomic_number, os) pair to a 1-based species index via vocab. Six filters
-        are applied (see module docstring for ordering and rationale).
+        (atomic_number, os) pair to a 1-based species index via vocab. Six rules
+        are validated (see module docstring for ordering and rationale); a
+        structure violating any rule raises immediately rather than being
+        silently dropped, since this data should already have been through
+        preprocessing.
 
         Parameters
         ----------
@@ -229,16 +247,14 @@ class SpeciesCrystalDataset(BaseDataset):
             Per-sample transforms applied in __getitem__.
         properties
             Property names to load from {prop}.json files in cache_path.
-        filter_unknown_species
-            If True (default), silently drop structures that contain any
-            (atomic_number, oxidation_state) pair absent from vocab and log the
-            count. If False, raise ValueError listing the unknown pairs instead.
         max_atoms
-            Structures with more atoms than this threshold are dropped.
+            Structures with more atoms than this threshold raise
+            ``MaxAtomsExceededError``.
         mv_elements
             Elements permitted to carry more than one distinct OS per compound.
-            Structures where any other element appears with multiple OS values are
-            dropped. Pass ``None`` to disable this filter.
+            Structures where any other element appears with multiple OS values
+            raise ``MixedValenceViolationError``. Pass ``None`` to disable this
+            check.
 
         Returns
         -------
@@ -249,14 +265,10 @@ class SpeciesCrystalDataset(BaseDataset):
         ------
         FileNotFoundError
             If any required .npy file or property .json file is missing.
-        ValueError
-            If ``filter_unknown_species=False`` and any (z, os) pair is absent
-            from vocab.
+        neutral_layer.data.filtering.DatasetValidationError
+            If any structure violates one of the 6 rules above (see module
+            docstring for the specific exception subclass raised per rule).
         """
-        import logging
-
-        log = logging.getLogger(__name__)
-
         cache_path = str(cache_path)
 
         def _load(filename: str) -> numpy.typing.NDArray:
@@ -282,37 +294,42 @@ class SpeciesCrystalDataset(BaseDataset):
         atom_struct_idx = np.repeat(np.arange(len(num_atoms)), num_atoms)
         offsets = np.concatenate([[0], np.cumsum(num_atoms)])
 
-        # ── Filter 1: max atoms ───────────────────────────────────────────────
-        too_large_mask = num_atoms > max_atoms
-        if too_large_mask.any():
-            log.warning(
-                "%s: dropped %d/%d structures with >%d atoms",
-                cache_path,
-                int(too_large_mask.sum()),
-                len(num_atoms),
-                max_atoms,
+        def _raise_if_any(
+            bad_mask: numpy.typing.NDArray,
+            error_cls: type[DatasetValidationError],
+            summary: str,
+        ) -> None:
+            if not bad_mask.any():
+                return
+            bad_ids = structure_id[bad_mask].tolist()
+            sample = bad_ids[:10]
+            more = f" (+{len(bad_ids) - 10} more)" if len(bad_ids) > 10 else ""
+            raise error_cls(
+                f"{cache_path}: {int(bad_mask.sum())}/{len(num_atoms)} structures {summary}: "
+                f"{sample}{more}"
             )
 
-        # ── Filter 2: alloy check ─────────────────────────────────────────────
-        # Metallic-only structures are kept only when every atom carries OS=0.
+        # ── Rule 1: max atoms ────────────────────────────────────────────────
+        _raise_if_any(
+            num_atoms > max_atoms, MaxAtomsExceededError, f"exceed max_atoms={max_atoms}"
+        )
+
+        # ── Rule 2: alloy check ──────────────────────────────────────────────
+        # Metallic-only structures are only valid when every atom carries OS=0.
         # Non-zero OS on a metal-only compound is an ICSD artefact.
         is_metal_atom = np.array(
-            [z in _METAL_ATOMIC_NUMBERS for z in raw_atomic_numbers.tolist()]
+            [z in METAL_ATOMIC_NUMBERS for z in raw_atomic_numbers.tolist()]
         )
         alloy_bad = np.zeros(len(num_atoms), dtype=bool)
         for i in range(len(num_atoms)):
             s, e = int(offsets[i]), int(offsets[i + 1])
             if is_metal_atom[s:e].all():
                 alloy_bad[i] = not (oxidation_states[s:e] == 0).all()
-        if alloy_bad.any():
-            log.warning(
-                "%s: dropped %d/%d metallic-only structures with non-zero OS",
-                cache_path,
-                int(alloy_bad.sum()),
-                len(num_atoms),
-            )
+        _raise_if_any(
+            alloy_bad, AlloyNonZeroOxidationStateError, "are metallic-only with non-zero OS"
+        )
 
-        # ── Filter 3: single-species ──────────────────────────────────────────
+        # ── Rule 3: single-species ───────────────────────────────────────────
         single_species_bad = np.array(
             [
                 len(
@@ -327,15 +344,9 @@ class SpeciesCrystalDataset(BaseDataset):
             ],
             dtype=bool,
         )
-        if single_species_bad.any():
-            log.warning(
-                "%s: dropped %d/%d single-species structures",
-                cache_path,
-                int(single_species_bad.sum()),
-                len(num_atoms),
-            )
+        _raise_if_any(single_species_bad, SingleSpeciesError, "are single-species")
 
-        # ── Filter 4: unknown (z, os) pairs ──────────────────────────────────
+        # ── Rule 4: unknown (z, os) pairs ────────────────────────────────────
         if invalid_atom_mask.any():
             unknown_pairs: set[tuple[int, int]] = set(
                 zip(
@@ -343,11 +354,6 @@ class SpeciesCrystalDataset(BaseDataset):
                     oxidation_states[invalid_atom_mask].tolist(),
                 )
             )
-            if not filter_unknown_species:
-                raise ValueError(
-                    f"The following (atomic_number, oxidation_state) pairs are not in the "
-                    f"species vocabulary: {sorted(unknown_pairs)}"
-                )
             invalid_count_per_struct = np.zeros(len(num_atoms), dtype=np.int64)
             np.add.at(
                 invalid_count_per_struct,
@@ -355,37 +361,28 @@ class SpeciesCrystalDataset(BaseDataset):
                 invalid_atom_mask.astype(np.int64),
             )
             bad_from_unknown = invalid_count_per_struct > 0
-            log.warning(
-                "%s: dropped %d/%d structures containing unknown (z, os) pairs: %s",
-                cache_path,
-                int(bad_from_unknown.sum()),
-                len(num_atoms),
-                sorted(unknown_pairs),
+            raise UnknownSpeciesError(
+                f"{cache_path}: {int(bad_from_unknown.sum())}/{len(num_atoms)} structures "
+                f"contain (atomic_number, oxidation_state) pairs not in the species "
+                f"vocabulary: {sorted(unknown_pairs)}"
             )
-        else:
-            bad_from_unknown = np.zeros(len(num_atoms), dtype=bool)
 
-        # ── Filter 5: non-neutral structures ─────────────────────────────────
+        # ── Rule 5: non-neutral structures ───────────────────────────────────
         # Non-neutral structures cause log_z = -inf for all timesteps once
         # their atoms are committed, triggering NaN in the SPL backward pass.
         charge_per_struct = np.zeros(len(num_atoms), dtype=np.int64)
         np.add.at(charge_per_struct, atom_struct_idx, oxidation_states)
-        non_neutral_mask = charge_per_struct != 0
-        if non_neutral_mask.any():
-            log.warning(
-                "%s: dropped %d/%d non-neutral structures (total OS ≠ 0)",
-                cache_path,
-                int(non_neutral_mask.sum()),
-                len(num_atoms),
-            )
+        _raise_if_any(
+            charge_per_struct != 0, ChargeNonNeutralError, "are non-neutral (total OS != 0)"
+        )
 
-        # ── Filter 6: MV element registry ────────────────────────────────────
+        # ── Rule 6: MV element registry ──────────────────────────────────────
         # Non-MV elements must carry exactly one distinct OS per structure.
-        mv_bad = np.zeros(len(num_atoms), dtype=bool)
         if mv_elements is not None:
             from pymatgen.core import Element as _PmgEl
 
             z_to_sym: dict[int, str] = {e.Z: e.symbol for e in _PmgEl}
+            mv_bad = np.zeros(len(num_atoms), dtype=bool)
             for i in range(len(num_atoms)):
                 s, e = int(offsets[i]), int(offsets[i + 1])
                 el_os: dict[str, set[int]] = {}
@@ -398,15 +395,12 @@ class SpeciesCrystalDataset(BaseDataset):
                     if len(charges) > 1 and sym not in mv_elements:
                         mv_bad[i] = True
                         break
-            if mv_bad.any():
-                log.warning(
-                    "%s: dropped %d/%d structures where a non-MV element carries >1 distinct OS",
-                    cache_path,
-                    int(mv_bad.sum()),
-                    len(num_atoms),
-                )
+            _raise_if_any(
+                mv_bad,
+                MixedValenceViolationError,
+                "have a non-MV element carrying >1 distinct OS",
+            )
 
-        # Load properties before filtering so the keep_struct mask can be applied.
         property_names = properties or []
         props: dict[PropertySourceId, numpy.typing.NDArray] = {}
         for prop_name in property_names:
@@ -416,27 +410,6 @@ class SpeciesCrystalDataset(BaseDataset):
                     f"{prop_name}.json does not exist in {cache_path}."
                 )
             props[prop_name] = PropertyValues.from_json(prop_path).values
-
-        # ── Combined filtering pass ───────────────────────────────────────────
-        bad_struct_mask = (
-            too_large_mask
-            | alloy_bad
-            | single_species_bad
-            | bad_from_unknown
-            | non_neutral_mask
-            | mv_bad
-        )
-        if bad_struct_mask.any():
-            keep_struct = ~bad_struct_mask
-            cell = cell[keep_struct]
-            num_atoms = num_atoms[keep_struct]
-            structure_id = structure_id[keep_struct]
-            for prop_name in props:
-                props[prop_name] = props[prop_name][keep_struct]
-
-            keep_atom = ~np.isin(atom_struct_idx, np.where(bad_struct_mask)[0])
-            pos = pos[keep_atom]
-            species_indices = species_indices[keep_atom]
 
         return cls(
             pos=pos,

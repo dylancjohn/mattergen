@@ -10,7 +10,7 @@ import torch
 
 from mattergen.common.gemnet.layers.base_layers import Dense
 from mattergen.common.utils.globals import MAX_ATOMIC_NUM
-from neutral_layer.vocab import OS_VALUES
+from neutral_layer.data.vocab import OS_VALUES
 
 
 class IdentityEmbedding(torch.nn.Identity):
@@ -81,7 +81,7 @@ class SpeciesEmbedding(torch.nn.Module):
     ):
         super().__init__()
         if species_list is None:
-            from neutral_layer.vocab import build_species_vocab
+            from neutral_layer.data.vocab import build_species_vocab
 
             species_list = build_species_vocab().species_list
         self.emb_size = emb_size  # GemNetT reads this via getattr(atom_embedding, "emb_size")

@@ -98,7 +98,7 @@ include = ["mattergen*"]
 "*" = ["**.yaml", "**.csv", "**.pt", "**.json"]
 
 [tool.uv.sources]
-neutral-layer = { path = "../generation", editable = true }
+neutral-layer = { path = "../neutral_layer", editable = true }
 torch = { index = "pytorch_linux",  marker = "sys_platform == 'linux'" }
 torchvision = { index = "pytorch_linux",  marker = "sys_platform == 'linux'" }
 torchaudio = { index = "pytorch_linux",  marker = "sys_platform == 'linux'" }

@@ -29,7 +29,7 @@ from mattergen.common.data.dataset import DatasetTransform
 from mattergen.common.data.transform import symmetrize_lattice
 from mattergen.common.data.types import PropertySourceId
 from mattergen.constraints.dataset import SpeciesCrystalDataset
-from neutral_layer.vocab import build_species_vocab
+from neutral_layer.data.vocab import build_species_vocab
 
 
 class SpeciesDataModule(pl.LightningDataModule):

@@ -24,7 +24,7 @@ from omegaconf import OmegaConf
 @cache
 def _species_vocab_size() -> int:
     """Return the number of species in the default SpeciesVocab (cached)."""
-    from neutral_layer.vocab import build_species_vocab
+    from neutral_layer.data.vocab import build_species_vocab
 
     return build_species_vocab().num_species
 

@@ -89,7 +89,7 @@ def main(
 
     species_vocab = None
     if use_species_vocab:
-        from neutral_layer.vocab import build_species_vocab
+        from neutral_layer.data.vocab import build_species_vocab
 
         species_vocab = build_species_vocab()
 
