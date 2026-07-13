@@ -9,10 +9,11 @@ Tests cover:
     - Species correctness: decoded (z, os) matches original npy values.
     - subset produces a correctly sized dataset with matching indices.
     - FileNotFoundError raised for missing .npy files.
-    - Each of the 6 validation rules raises the corresponding
-      neutral_layer.data.filtering.DatasetValidationError subclass (or a local
-      subclass, for the two mattergen-specific rules) rather than silently
-      dropping the offending structure.
+    - Each of the 6 validation rules raises
+      neutral_layer.data.filtering.DatasetValidationError with the
+      corresponding ViolationCode (including ALLOY_NONZERO_OS/UNKNOWN_SPECIES,
+      the two mattergen-specific rules) rather than silently dropping the
+      offending structure.
 """
 
 from pathlib import Path
@@ -21,17 +22,8 @@ import numpy as np
 import pytest
 import torch
 
-from mattergen.constraints.dataset import (
-    AlloyNonZeroOxidationStateError,
-    SpeciesCrystalDataset,
-    UnknownSpeciesError,
-)
-from neutral_layer.data.filtering import (
-    ChargeNonNeutralError,
-    MaxAtomsExceededError,
-    MixedValenceViolationError,
-    SingleSpeciesError,
-)
+from mattergen.constraints.dataset import SpeciesCrystalDataset
+from neutral_layer.data.filtering import DatasetValidationError, ViolationCode
 from neutral_layer.data.vocab import SpeciesVocab
 
 # Synthetic vocab: (8,-2)->1, (26,0)->2, (26,2)->3, (26,3)->4, (28,0)->5, mask->6
@@ -95,15 +87,17 @@ class TestFromCachePath:
 
     def test_unknown_pair_raises(self, tmp_path: Path):
         _write_npy_files(tmp_path, [8, 26], [-2, 99], [2])
-        with pytest.raises(UnknownSpeciesError, match="not in the species"):
+        with pytest.raises(DatasetValidationError, match="not in the species") as exc_info:
             SpeciesCrystalDataset.from_cache_path(tmp_path, _VOCAB)
+        assert exc_info.value.violation is ViolationCode.UNKNOWN_SPECIES
 
     def test_unknown_pair_raises_even_with_other_valid_structures(self, tmp_path: Path):
         # One valid structure (O²⁻ + Fe²⁺) and one invalid (O²⁻ + Z=26 OS=99).
         # The whole load raises rather than silently dropping the invalid one.
         _write_npy_files(tmp_path, [8, 26, 8, 26], [-2, 2, -2, 99], [2, 2])
-        with pytest.raises(UnknownSpeciesError):
+        with pytest.raises(DatasetValidationError) as exc_info:
             SpeciesCrystalDataset.from_cache_path(tmp_path, _VOCAB)
+        assert exc_info.value.violation is ViolationCode.UNKNOWN_SPECIES
 
 
 class TestGetItem:
@@ -179,12 +173,13 @@ class TestSpeciesDecodingRoundTrip:
 
 class TestNeutralityFilter:
     def test_non_neutral_structure_raises(self, tmp_path: Path):
-        """Structures with non-zero total OS must raise ChargeNonNeutralError."""
+        """Structures with non-zero total OS must raise CHARGE_NON_NEUTRAL."""
         # Structure 0: (8,-2) + (26,2) = 0  (neutral)
         # Structure 1: (8,-2) + (26,3) = +1 (non-neutral)
         _write_npy_files(tmp_path, [8, 26, 8, 26], [-2, 2, -2, 3], [2, 2])
-        with pytest.raises(ChargeNonNeutralError):
+        with pytest.raises(DatasetValidationError) as exc_info:
             SpeciesCrystalDataset.from_cache_path(tmp_path, _VOCAB)
+        assert exc_info.value.violation is ViolationCode.CHARGE_NON_NEUTRAL
 
     def test_all_neutral_does_not_raise(self, tmp_path: Path):
         """When all structures are neutral, loading succeeds."""
@@ -195,17 +190,19 @@ class TestNeutralityFilter:
     def test_all_non_neutral_raises(self, tmp_path: Path):
         """When every structure is non-neutral, loading raises."""
         _write_npy_files(tmp_path, [8, 26], [-2, 3], [2])
-        with pytest.raises(ChargeNonNeutralError):
+        with pytest.raises(DatasetValidationError) as exc_info:
             SpeciesCrystalDataset.from_cache_path(tmp_path, _VOCAB)
+        assert exc_info.value.violation is ViolationCode.CHARGE_NON_NEUTRAL
 
 
 class TestMaxAtomsFilter:
     def test_oversized_structure_raises(self, tmp_path: Path):
-        """Structures with more atoms than max_atoms must raise MaxAtomsExceededError."""
+        """Structures with more atoms than max_atoms must raise MAX_ATOMS."""
         # 10-atom structure, threshold = 4
         _write_npy_files(tmp_path, [8, 26] * 5, [-2, 2] * 5, [10])
-        with pytest.raises(MaxAtomsExceededError):
+        with pytest.raises(DatasetValidationError) as exc_info:
             SpeciesCrystalDataset.from_cache_path(tmp_path, _VOCAB, max_atoms=4)
+        assert exc_info.value.violation is ViolationCode.MAX_ATOMS
 
     def test_at_limit_does_not_raise(self, tmp_path: Path):
         """Structures exactly at max_atoms must not raise."""
@@ -217,8 +214,9 @@ class TestMaxAtomsFilter:
         """Any structure exceeding the limit raises, even if others are within it."""
         # Structure 0: 2 atoms (within limit), Structure 1: 6 atoms (exceeds max_atoms=4)
         _write_npy_files(tmp_path, [8, 26] + [8, 26] * 3, [-2, 2] + [-2, 2] * 3, [2, 6])
-        with pytest.raises(MaxAtomsExceededError):
+        with pytest.raises(DatasetValidationError) as exc_info:
             SpeciesCrystalDataset.from_cache_path(tmp_path, _VOCAB, max_atoms=4)
+        assert exc_info.value.violation is ViolationCode.MAX_ATOMS
 
 
 class TestAlloyFilter:
@@ -230,10 +228,11 @@ class TestAlloyFilter:
         assert len(ds) == 1
 
     def test_metallic_nonzero_os_raises(self, tmp_path: Path):
-        """Pure-metal structure with non-zero OS must raise AlloyNonZeroOxidationStateError."""
+        """Pure-metal structure with non-zero OS must raise ALLOY_NONZERO_OS."""
         _write_npy_files(tmp_path, [26, 26], [2, -2], [2])
-        with pytest.raises(AlloyNonZeroOxidationStateError):
+        with pytest.raises(DatasetValidationError) as exc_info:
             SpeciesCrystalDataset.from_cache_path(tmp_path, _VOCAB)
+        assert exc_info.value.violation is ViolationCode.ALLOY_NONZERO_OS
 
     def test_ionic_compound_not_affected(self, tmp_path: Path):
         """Non-metallic compound (contains O) must pass through the alloy check."""
@@ -244,13 +243,14 @@ class TestAlloyFilter:
 
 class TestSingleSpeciesFilter:
     def test_single_element_raises(self, tmp_path: Path):
-        """Structures containing only one distinct element must raise SingleSpeciesError."""
+        """Structures containing only one distinct element must raise SINGLE_SPECIES."""
         # Use (26, 0) x 2: single metal species, total charge = 0, so the
         # alloy check passes (all metal, all OS=0) and the single-species
         # check fires in isolation.
         _write_npy_files(tmp_path, [26, 26], [0, 0], [2])
-        with pytest.raises(SingleSpeciesError):
+        with pytest.raises(DatasetValidationError) as exc_info:
             SpeciesCrystalDataset.from_cache_path(tmp_path, _VOCAB)
+        assert exc_info.value.violation is ViolationCode.SINGLE_SPECIES
 
     def test_two_element_compound_does_not_raise(self, tmp_path: Path):
         """Structures with at least two distinct elements must survive."""
@@ -268,8 +268,9 @@ class TestMVFilter:
         local_vocab = SpeciesVocab(species_list=((8, -2), (8, -1), (26, 3)))
         # Charge: -2 + -1 + 3 = 0
         _write_npy_files(tmp_path, [8, 8, 26], [-2, -1, 3], [3])
-        with pytest.raises(MixedValenceViolationError):
+        with pytest.raises(DatasetValidationError) as exc_info:
             SpeciesCrystalDataset.from_cache_path(tmp_path, local_vocab)
+        assert exc_info.value.violation is ViolationCode.MIXED_VALENCE
 
     def test_mv_element_two_os_kept(self, tmp_path: Path):
         """Structure where a MV element (Fe) carries two distinct OS values must be kept.
