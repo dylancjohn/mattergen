@@ -296,22 +296,20 @@ class SpeciesCrystalDataset(BaseDataset):
         )
 
         # ── Rule 3: single-species ───────────────────────────────────────────
-        single_species_bad = np.array(
-            [
-                len(
-                    set(
-                        raw_atomic_numbers[
-                            int(offsets[i]) : int(offsets[i + 1])
-                        ].tolist()
-                    )
-                )
-                == 1
-                for i in range(len(num_atoms))
-            ],
-            dtype=bool,
-        )
+        # Single-species alloys (e.g. elemental Fe, Cu) are valid -- OS=0 is a
+        # well-defined answer for a pure metal, and Rule 2 above already
+        # guarantees any metal-only structure reaching this point has OS=0.
+        # Single-species non-metals are still rejected: OS is undefined for a
+        # lone non-metal element with no counter-ion.
+        single_species_bad = np.zeros(len(num_atoms), dtype=bool)
+        for i in range(len(num_atoms)):
+            s, e = int(offsets[i]), int(offsets[i + 1])
+            if len(set(raw_atomic_numbers[s:e].tolist())) == 1:
+                single_species_bad[i] = not is_metal_atom[s:e].all()
         _raise_if_any(
-            single_species_bad, ViolationCode.SINGLE_SPECIES, "are single-species"
+            single_species_bad,
+            ViolationCode.SINGLE_SPECIES,
+            "are single-species non-metals",
         )
 
         # ── Rule 4: unknown (z, os) pairs ────────────────────────────────────
