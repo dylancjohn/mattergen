@@ -1,11 +1,6 @@
 """dataset.py
 
 SpeciesCrystalDataset for training MatterGen on a species (element + OS) vocabulary.
-
-Mirrors CrystalDataset but stores 1-based species indices in ChemGraph.atomic_numbers
-rather than raw atomic numbers. Preserving the 1-based convention means AtomEmbedding
-(which applies Z - 1) and D3PMCorruption (offset=1) are unchanged; only the vocab
-size in model config needs to differ.
 """
 
 from __future__ import annotations

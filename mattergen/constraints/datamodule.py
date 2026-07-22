@@ -1,17 +1,6 @@
 """datamodule.py
 
 LightningDataModule for species-vocabulary training.
-
-``SpeciesDataModule`` is fully Hydra-instantiable: it accepts only primitive
-constructor arguments (data directory path, num_workers, batch_size) and
-builds the species vocab and datasets internally. This removes the need for a
-custom training script to wire the vocab through to both the embedding and the
-datasets.
-
-Modules
--------
-SpeciesDataModule
-    DataModule that serves SpeciesCrystalDataset splits for train/val/test.
 """
 
 from __future__ import annotations
@@ -20,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytorch_lightning as pl
+from neutral_layer.data.vocab import build_species_vocab
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 
@@ -29,7 +19,6 @@ from mattergen.common.data.dataset import DatasetTransform
 from mattergen.common.data.transform import symmetrize_lattice
 from mattergen.common.data.types import PropertySourceId
 from mattergen.constraints.dataset import SpeciesCrystalDataset
-from neutral_layer.data.vocab import build_species_vocab
 
 
 class SpeciesDataModule(pl.LightningDataModule):
@@ -86,7 +75,10 @@ class SpeciesDataModule(pl.LightningDataModule):
 
         def _load_split(split: str) -> SpeciesCrystalDataset:
             dataset = SpeciesCrystalDataset.from_cache_path(
-                data_dir / split, vocab=vocab, transforms=transforms, properties=properties
+                data_dir / split,
+                vocab=vocab,
+                transforms=transforms,
+                properties=properties,
             )
             for t in dataset_transforms:
                 dataset = t(dataset)
@@ -97,7 +89,9 @@ class SpeciesDataModule(pl.LightningDataModule):
         # Fall back to val when a held-out test split is not present (e.g. fine-tuning
         # datasets that only ship train/val).
         test_dir = data_dir / "test"
-        self.test_dataset = _load_split("test") if test_dir.exists() else self.val_dataset
+        self.test_dataset = (
+            _load_split("test") if test_dir.exists() else self.val_dataset
+        )
 
     def train_dataloader(self, shuffle: bool = True) -> DataLoader:
         return DataLoader(
