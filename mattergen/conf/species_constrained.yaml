@@ -1,0 +1,19 @@
+hydra:
+  run:
+    dir: ${oc.env:OUTPUT_DIR,outputs/singlerun/${now:%Y-%m-%d}/${now:%H-%M-%S}}
+
+auto_resume: true
+
+# MatterGen with the species (element + oxidation-state) vocabulary AND the
+# structured charge-neutral training objective (NeutralMaterialsLoss).  Same
+# mp-20-os data and species vocab as `species.yaml`; only the atom-type loss
+# differs (diffusion_module: neutral).  Ablate the two terms via
+# lightning_module.diffusion_module.loss_fn.{vb_weight,ce_weight}.
+defaults:
+  - data_module: mp_20_species
+  - trainer: default
+  - lightning_module: default
+  - lightning_module/diffusion_module: neutral
+  - lightning_module/diffusion_module/model: mattergen_species
+  - lightning_module/diffusion_module/corruption: species
+  - _self_

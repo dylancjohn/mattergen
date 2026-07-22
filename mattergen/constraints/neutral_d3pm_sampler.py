@@ -51,9 +51,24 @@ class NeutralSampler:
         charge_of: Optional[list[int]] = None,
         mask_idx: Optional[int] = None,
     ) -> None:
-        if charge_of is None or mask_idx is None:
+        if (charge_of is None) != (mask_idx is None):
+            raise ValueError(
+                "charge_of and mask_idx must either both be supplied or both be omitted"
+            )
+        if charge_of is None:
             charge_of, mask_idx = build_charge_of()
-        self.charge_of = charge_of
+        assert charge_of is not None and mask_idx is not None
+        if not charge_of:
+            raise ValueError("charge_of must contain at least the absorbing MASK class")
+        if mask_idx != len(charge_of) - 1:
+            raise ValueError(
+                "absorbing D3PM requires MASK to be the final class; "
+                f"got mask_idx={mask_idx}, K={len(charge_of)}"
+            )
+        if charge_of[mask_idx] != 0:
+            raise ValueError("the absorbing MASK class must have charge zero")
+
+        self.charge_of = list(charge_of)
         self.mask_idx = mask_idx
         self._charge_tensor_cache: dict[str, LongTensor] = {}
 
@@ -95,6 +110,28 @@ class NeutralSampler:
             -inf elsewhere).  Raises ``RuntimeError`` if any crystal has no
             charge-neutral assignment.
         """
+        if logits.ndim != 2:
+            raise ValueError(f"logits must have shape [N_atoms, K], got {logits.shape}")
+        if logits.shape[-1] != len(self.charge_of):
+            raise ValueError(
+                f"charge_of has length {len(self.charge_of)}, but logits have "
+                f"{logits.shape[-1]} classes"
+            )
+        if x_t.ndim != 1 or x_t.shape[0] != logits.shape[0]:
+            raise ValueError(
+                f"x_t must have shape [{logits.shape[0]}], got {x_t.shape}"
+            )
+        if batch_idx.ndim != 1 or batch_idx.shape[0] != logits.shape[0]:
+            raise ValueError(
+                f"batch_idx must have shape [{logits.shape[0]}], got {batch_idx.shape}"
+            )
+        if batch_idx.numel() == 0:
+            raise ValueError("NeutralSampler requires at least one atom")
+        if bool(((x_t < 1) | (x_t > len(self.charge_of))).any()):
+            raise ValueError(
+                f"1-based x_t values must lie in [1, {len(self.charge_of)}]"
+            )
+
         device = logits.device
         batch_size = int(batch_idx.max().item()) + 1
 
@@ -103,7 +140,11 @@ class NeutralSampler:
 
         logits_pad, attention_mask = flat_to_padded(logits, batch_idx, batch_size)
         x_t_pad, _ = flat_to_padded(
-            x_t_zero, batch_idx, batch_size, fill_value=self.mask_idx
+            x_t_zero,
+            batch_idx,
+            batch_size,
+            fill_value=self.mask_idx,
+            validate_batch_idx=False,
         )
 
         B, N, K = logits_pad.shape
@@ -159,7 +200,9 @@ class NeutralSampler:
         if padding.any():
             one_hot[padding] = logits_pad[padding]
 
-        return padded_to_flat(one_hot, batch_idx, batch_size)
+        return padded_to_flat(
+            one_hot, batch_idx, batch_size, validate_batch_idx=False
+        )
 
 
 class NeutralD3PMAncestralSamplingPredictor(D3PMAncestralSamplingPredictor):
