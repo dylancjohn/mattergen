@@ -20,7 +20,7 @@ from typing import (
 
 import torch
 
-from mattergen.diffusion.corruption.d3pm_corruption import D3PMCorruption
+from mattergen.diffusion.corruption.discrete_corruption import DiscreteCorruption
 from mattergen.diffusion.corruption.sde_lib import SDE, Corruption
 from mattergen.diffusion.data.batched_data import BatchedData
 
@@ -53,7 +53,7 @@ class MultiCorruption(Generic[Diffusable]):
     def __init__(
         self,
         sdes: Optional[Mapping[str, SDE]] = None,
-        discrete_corruptions: Optional[Mapping[str, D3PMCorruption]] = None,
+        discrete_corruptions: Optional[Mapping[str, DiscreteCorruption]] = None,
     ):
         """
         Args:

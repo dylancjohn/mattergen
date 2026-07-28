@@ -6,25 +6,25 @@ from typing import Optional, Tuple, Union
 import torch
 from torch_scatter import scatter_add
 
-from mattergen.diffusion.corruption.corruption import B, Corruption, maybe_expand
+from mattergen.diffusion.corruption.corruption import B, maybe_expand
+from mattergen.diffusion.corruption.discrete_corruption import DiscreteCorruption
 from mattergen.diffusion.d3pm import d3pm
 from mattergen.diffusion.data.batched_data import BatchedData
 from mattergen.diffusion.discrete_time import to_discrete_time
 
 
-class D3PMCorruption(Corruption):
+class D3PMCorruption(DiscreteCorruption):
     """D3PM discrete corruption process. Has discret time and discrete (categorical) values."""
+
+    requires_fixed_num_steps: bool = True
 
     def __init__(
         self,
         d3pm: d3pm.DiscreteDiffusionBase,
         offset: int = 0,
     ):
-        super().__init__()
+        super().__init__(offset=offset)
         self.d3pm = d3pm
-        # Often, the data is not zero-indexed, so we need to offset the data
-        # E.g., if we are dealing with one-based class labels, we might want to offset by 1 to convert from zero-based indices to actual classes.
-        self.offset = offset
 
     @property
     def N(self) -> int:
@@ -32,19 +32,6 @@ class D3PMCorruption(Corruption):
         Must match number of noise levels used for sampling. To change this, we'd need to implement continuous-time diffusion for discrete things
         as in e.g. Campbell et al. https://arxiv.org/abs/2205.14987"""
         return self.d3pm.num_steps
-
-    def _to_zero_based(self, x: torch.Tensor) -> torch.Tensor:
-        """Convert from non-zero-based indices to zero-based indices."""
-        return x - self.offset
-
-    def _to_non_zero_based(self, x: torch.Tensor) -> torch.Tensor:
-        """Convert from zero-based indices to non-zero-based indices."""
-        return x + self.offset
-
-    @property
-    def T(self) -> float:
-        """End time of the Corruption process."""
-        return 1
 
     def marginal_prob(
         self,

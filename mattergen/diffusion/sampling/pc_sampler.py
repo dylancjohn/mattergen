@@ -61,9 +61,17 @@ class PredictorCorrector(Generic[Diffusable]):
         ), "Must specify at least one predictor or corrector"
         corrector_partials = corrector_partials or {}
         predictor_partials = predictor_partials or {}
-        if self._multi_corruption.discrete_corruptions:
-            # These all have property 'N' because they are D3PM type
-            assert set(c.N for c in self._multi_corruption.discrete_corruptions.values()) == {N}  # type: ignore
+        # Discrete-time discrete corruptions (D3PM) expose a fixed 'N' (their number
+        # of trained noise levels) that must match the sampler's N. Continuous-time
+        # discrete corruptions (MDLM, Duo) have requires_fixed_num_steps=False: the
+        # same trained model can be sampled with any number of steps.
+        fixed_step_corruptions = [
+            c
+            for c in self._multi_corruption.discrete_corruptions.values()
+            if c.requires_fixed_num_steps  # type: ignore
+        ]
+        if fixed_step_corruptions:
+            assert set(c.N for c in fixed_step_corruptions) == {N}  # type: ignore
 
         self._predictors = {
             k: v(corruption=self._multi_corruption.corruptions[k], score_fn=None)
