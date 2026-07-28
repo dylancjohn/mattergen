@@ -1,0 +1,17 @@
+hydra:
+  run:
+    dir: ${oc.env:OUTPUT_DIR,outputs/singlerun/${now:%Y-%m-%d}/${now:%H-%M-%S}}
+
+auto_resume: true
+
+# MatterGen with the species (element + oxidation-state) vocabulary and
+# unconstrained MDLM atom-type diffusion. Same mp-20-os data and species vocab
+# as species.yaml; only the atom-type diffusion family differs.
+defaults:
+  - data_module: mp_20_species
+  - trainer: default
+  - lightning_module: default
+  - lightning_module/diffusion_module: mdlm
+  - lightning_module/diffusion_module/model: mattergen_species
+  - lightning_module/diffusion_module/corruption: mdlm_species
+  - _self_
