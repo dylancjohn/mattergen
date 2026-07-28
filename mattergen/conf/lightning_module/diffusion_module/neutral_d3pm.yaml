@@ -1,15 +1,17 @@
 _target_: mattergen.diffusion.diffusion_module.DiffusionModule
 loss_fn:
-  _target_: mattergen.constraints.neutral_d3pm_loss.NeutralMaterialsLoss
+  _target_: mattergen.common.loss.MaterialsLoss
   reduce: sum
   include_pos: True
   include_cell: True
   include_atomic_numbers: True
-  # Structured charge-neutral atom-type objective. Either weight = 0 disables
-  # (and skips computing) that term, so this config ablates vb-only / ce-only.
-  vb_weight: 1.0
-  ce_weight: 0.01
-  mc_samples: 1
+  atomic_numbers_loss_partial:
+    _target_: mattergen.diffusion.d3pm.neutral_d3pm_loss.make_neutral_d3pm_loss
+    # Structured charge-neutral atom-type objective. Either weight = 0 disables
+    # (and skips computing) that term, so this config ablates vb-only / ce-only.
+    vb_weight: 1.0
+    ce_weight: 0.01
+    mc_samples: 1
   weights:
     cell: 1.0
     pos: 0.1

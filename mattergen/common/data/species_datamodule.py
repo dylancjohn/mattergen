@@ -1,4 +1,4 @@
-"""datamodule.py
+"""species_datamodule.py
 
 LightningDataModule for species-vocabulary training.
 """
@@ -16,9 +16,9 @@ from torch.utils.data import DataLoader
 from mattergen.common.data.collate import collate
 from mattergen.common.data.datamodule import worker_init_fn
 from mattergen.common.data.dataset import DatasetTransform
+from mattergen.common.data.species_dataset import SpeciesCrystalDataset
 from mattergen.common.data.transform import symmetrize_lattice
 from mattergen.common.data.types import PropertySourceId
-from mattergen.constraints.dataset import SpeciesCrystalDataset
 
 
 class SpeciesDataModule(pl.LightningDataModule):

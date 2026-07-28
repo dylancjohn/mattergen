@@ -1,7 +1,7 @@
 """test_neutral_d3pm_loss.py
 
 Tests for the structured charge-neutral training loss in
-``mattergen.constraints.neutral_d3pm_loss``:
+``mattergen.diffusion.d3pm.neutral_d3pm_loss``:
 
     * CE term (vb_weight=0): gradcheck w.r.t. the raw logits.
     * At t==0 the VB term reveals every site, so L_vb == L_ce (value + gradcheck).
@@ -9,7 +9,8 @@ Tests for the structured charge-neutral training loss in
     * A neutral clean state gives a finite loss (feasible every step).
     * Intermediate-time gradients match exhaustive transition-weighted enumeration.
     * Invalid targets, partitions, vocabularies and MC configuration fail loudly.
-    * NeutralMaterialsLoss wires the constrained loss into the atomic_numbers field.
+    * make_neutral_d3pm_loss wires the constrained loss into MaterialsLoss's
+      injectable atomic_numbers_loss_partial.
 """
 
 from __future__ import annotations
@@ -24,15 +25,15 @@ import torch
 from neutral_layer.generation.dp import compute_q_max, neutral_log_z
 from omegaconf import OmegaConf
 
-from mattergen.constraints.neutral_d3pm_loss import (
-    NeutralMaterialsLoss,
+from mattergen.common.loss import MaterialsLoss
+from mattergen.diffusion.corruption.d3pm_corruption import D3PMCorruption
+from mattergen.diffusion.d3pm.d3pm import MaskDiffusion, create_discrete_diffusion_schedule
+from mattergen.diffusion.d3pm.neutral_d3pm_loss import (
     _numerator_logits,
     _pin_denominator_logits,
     make_neutral_d3pm_loss,
     neutral_d3pm_loss,
 )
-from mattergen.diffusion.corruption.d3pm_corruption import D3PMCorruption
-from mattergen.diffusion.d3pm.d3pm import MaskDiffusion, create_discrete_diffusion_schedule
 
 # Small synthetic charge vocab: species 0,1,2 (charges -1,0,+1) + MASK at index 3.
 CHARGE_OF = [-1, 0, 1, 0]
@@ -139,8 +140,12 @@ def test_vb_is_stochastic_but_finite_at_intermediate_t():
     assert score.grad is not None and torch.isfinite(score.grad).all()
 
 
-def test_neutral_materials_loss_wires_constrained_atom_loss():
-    loss = NeutralMaterialsLoss(vb_weight=1.0, ce_weight=0.01, mc_samples=1)
+def test_materials_loss_wires_constrained_atom_loss():
+    loss = MaterialsLoss(
+        atomic_numbers_loss_partial=make_neutral_d3pm_loss(
+            vb_weight=1.0, ce_weight=0.01, mc_samples=1
+        )
+    )
     atom_fn = loss.loss_fns["atomic_numbers"]
     assert isinstance(atom_fn, functools.partial)
     assert atom_fn.func is neutral_d3pm_loss
@@ -150,11 +155,12 @@ def test_neutral_materials_loss_wires_constrained_atom_loss():
 
 def test_neutral_loss_hydra_config_instantiates():
     config_path = (
-        Path(__file__).parents[2] / "conf/lightning_module/diffusion_module/neutral.yaml"
+        Path(__file__).parents[2] / "conf/lightning_module/diffusion_module/neutral_d3pm.yaml"
     )
     config = OmegaConf.load(config_path)
     loss = hydra.utils.instantiate(config.loss_fn)
-    assert isinstance(loss, NeutralMaterialsLoss)
+    assert isinstance(loss, MaterialsLoss)
+    assert loss.loss_fns["atomic_numbers"].func is neutral_d3pm_loss
 
 
 def test_t0_hybrid_ce_matches_base_mattergen_convention():
@@ -295,7 +301,7 @@ def test_non_finite_sampled_numerator_raises(monkeypatch):
         return torch.zeros(self.probs.shape[0], dtype=torch.long, device=self.probs.device)
 
     monkeypatch.setattr(
-        "mattergen.constraints.neutral_d3pm_loss.Categorical.sample",
+        "mattergen.diffusion.d3pm.neutral_d3pm_loss.Categorical.sample",
         _invalid_reverse_sample,
     )
     with pytest.raises(RuntimeError, match="non-finite numerator"):

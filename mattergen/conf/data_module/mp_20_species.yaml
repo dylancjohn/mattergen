@@ -1,4 +1,4 @@
-_target_: mattergen.constraints.datamodule.SpeciesDataModule
+_target_: mattergen.common.data.species_datamodule.SpeciesDataModule
 
 # average_density is not used by SpeciesDataModule at runtime; it is referenced
 # by the corruption config via ${data_module.average_density}. mp-20-os structures

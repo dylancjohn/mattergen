@@ -17,7 +17,7 @@ sampler_partial:
       _target_: mattergen.common.diffusion.predictors_correctors.LatticeAncestralSamplingPredictor
       _partial_: true
     atomic_numbers:
-      _target_: mattergen.constraints.neutral_d3pm_sampler.NeutralD3PMAncestralSamplingPredictor
+      _target_: mattergen.diffusion.d3pm.neutral_d3pm_sampler.NeutralD3PMAncestralSamplingPredictor
       predict_x0: True
       _partial_: true
 

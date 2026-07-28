@@ -1,7 +1,7 @@
 """test_neutral_d3pm_sampler.py
 
 Tests for the inference-time charge-neutrality glue in
-``mattergen.constraints.neutral_d3pm_sampler``:
+``mattergen.diffusion.d3pm.neutral_d3pm_sampler``:
 
     * ``NeutralSampler`` — one-hot output, charge-neutral joint samples,
       committed sites preserved, loud RuntimeError on infeasibility, MASK never
@@ -22,7 +22,7 @@ import itertools
 import pytest
 import torch
 
-from mattergen.constraints.neutral_d3pm_sampler import (
+from mattergen.diffusion.d3pm.neutral_d3pm_sampler import (
     NeutralD3PMAncestralSamplingPredictor,
     NeutralSampler,
 )
@@ -159,6 +159,27 @@ class TestNeutralSampler:
         batch_idx = torch.cat(
             [torch.full((n,), b, dtype=torch.long) for b, n in enumerate(batch_sizes)]
         )
+
+        with pytest.raises(RuntimeError, match="no charge-neutral assignment"):
+            sampler(logits, x_t, t=1, batch_idx=batch_idx)
+
+    def test_externally_masked_candidate_does_not_rescue_infeasibility(self):
+        """A candidate excluded upstream via a large-but-finite penalty (e.g.
+        mask_disallowed_species's -1e10, chosen to avoid a 0 * -inf NaN in its
+        own masking formula) must not be treated as reachable by the DP just
+        because it is finite. Species 1 here is the only route to neutrality
+        (species 0 + species 1 = 0); with species 0 and species 2 alone, no
+        two-site sum reaches zero, so this must raise, not silently pick
+        species 1.
+        """
+        charge_of = [1, -1, 3, 0]
+        mask_idx = 3
+        K = len(charge_of)
+        sampler = NeutralSampler(charge_of=charge_of, mask_idx=mask_idx)
+
+        logits = torch.tensor([[0.0, -1e10, 0.0, 0.0], [0.0, -1e10, 0.0, 0.0]])
+        x_t = torch.full((2,), mask_idx + 1, dtype=torch.long)
+        batch_idx = torch.zeros(2, dtype=torch.long)
 
         with pytest.raises(RuntimeError, match="no charge-neutral assignment"):
             sampler(logits, x_t, t=1, batch_idx=batch_idx)

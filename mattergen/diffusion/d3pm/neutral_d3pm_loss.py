@@ -13,7 +13,6 @@ import torch.nn.functional as F
 from neutral_layer.generation.dp import compute_q_max, flat_to_padded, neutral_log_z
 from torch.distributions import Categorical
 
-from mattergen.common.loss import MaterialsLoss
 from mattergen.constraints.charges import build_charge_of
 from mattergen.diffusion.corruption.corruption import Corruption
 from mattergen.diffusion.discrete_time import to_discrete_time
@@ -313,60 +312,21 @@ def make_neutral_d3pm_loss(
     vb_weight: float,
     ce_weight: float,
     mc_samples: int = 1,
-    reduce: Literal["sum", "mean"] = "mean",
 ):
     """Factory returning a ``neutral_d3pm_loss`` FieldLoss with charges bound.
 
-    Builds ``charge_of``/``mask_idx`` once from the species vocabulary.  Use as
-    the ``atomic_numbers`` field loss (see :class:`NeutralMaterialsLoss`).
+    Builds ``charge_of``/``mask_idx`` once from the species vocabulary. Use as
+    ``lightning_module.diffusion_module.loss_fn.atomic_numbers_loss_partial``
+    (see :class:`mattergen.common.loss.MaterialsLoss`), which supplies
+    ``reduce`` itself at call time.
     """
     _validate_mc_samples(mc_samples)
     charge_of, mask_idx = build_charge_of()
     return partial(
         neutral_d3pm_loss,
-        reduce=reduce,
         vb_weight=vb_weight,
         ce_weight=ce_weight,
         mc_samples=mc_samples,
         charge_of=charge_of,
         mask_idx=mask_idx,
     )
-
-
-class NeutralMaterialsLoss(MaterialsLoss):
-    """``MaterialsLoss`` with the constrained structured atom-type objective.
-
-    Identical to ``MaterialsLoss`` for the continuous (pos/cell) fields; the
-    ``atomic_numbers`` field uses :func:`neutral_d3pm_loss` instead of the
-    factorised ``d3pm_loss``.  Config-swappable via ``loss_fn._target_``.
-
-    Parameters
-    ----------
-    vb_weight, ce_weight
-        Weights of the structured VB reverse term and the constrained
-        clean-state CE term.  A weight of 0 skips that term entirely.
-    mc_samples
-        Monte-Carlo samples of the reverse target for the VB term.
-    **kwargs
-        Forwarded to :class:`MaterialsLoss` (must include
-        ``include_atomic_numbers=True``, the default).
-    """
-
-    def __init__(
-        self,
-        *,
-        vb_weight: float,
-        ce_weight: float,
-        mc_samples: int = 1,
-        **kwargs,
-    ) -> None:
-        super().__init__(**kwargs)
-        assert "atomic_numbers" in self.loss_fns, (
-            "NeutralMaterialsLoss requires include_atomic_numbers=True"
-        )
-        self.loss_fns["atomic_numbers"] = make_neutral_d3pm_loss(
-            vb_weight=vb_weight,
-            ce_weight=ce_weight,
-            mc_samples=mc_samples,
-            reduce=self.reduce,
-        )

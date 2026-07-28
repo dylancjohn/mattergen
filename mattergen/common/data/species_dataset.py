@@ -1,4 +1,4 @@
-"""dataset.py
+"""species_dataset.py
 
 SpeciesCrystalDataset for training MatterGen on a species (element + OS) vocabulary.
 """

@@ -1,4 +1,4 @@
-"""resolvers.py
+"""species_resolvers.py
 
 Custom OmegaConf resolvers for species-vocabulary configs.
 """

@@ -5,7 +5,10 @@ loss_fn:
   include_pos: True
   include_cell: True
   include_atomic_numbers: True
-  d3pm_hybrid_lambda: 0.01
+  atomic_numbers_loss_partial:
+    _target_: mattergen.diffusion.d3pm.d3pm_loss.d3pm_loss
+    _partial_: true
+    d3pm_hybrid_lambda: 0.01
   weights:
     cell: 1.0
     pos: 0.1

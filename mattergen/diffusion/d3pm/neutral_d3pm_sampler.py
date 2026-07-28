@@ -147,6 +147,17 @@ class NeutralSampler:
             validate_batch_idx=False,
         )
 
+        # Treat externally pre-masked candidates (e.g. mask_disallowed_species,
+        # which uses a large finite penalty rather than -inf to avoid a 0 * -inf
+        # NaN in its own additive masking) as hard exclusions in the DP, not
+        # merely improbable ones. Otherwise, if every truly-allowed candidate at
+        # a site is infeasible, the DP could still treat a nominally-disallowed
+        # one as reachable and silently select it instead of raising the
+        # infeasibility error below.
+        logits_pad = torch.where(
+            logits_pad < -1e8, torch.full_like(logits_pad, float("-inf")), logits_pad
+        )
+
         B, N, K = logits_pad.shape
         MASK_IDX = self.mask_idx
 

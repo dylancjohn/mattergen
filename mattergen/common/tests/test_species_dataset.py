@@ -1,6 +1,6 @@
-"""test_dataset.py
+"""test_species_dataset.py
 
-Unit tests for mattergen/constraints/dataset.py.
+Unit tests for mattergen/common/data/species_dataset.py.
 
 Tests cover:
     - Loading a dataset from fake .npy files via from_cache_path.
@@ -22,7 +22,7 @@ import numpy as np
 import pytest
 import torch
 
-from mattergen.constraints.dataset import SpeciesCrystalDataset
+from mattergen.common.data.species_dataset import SpeciesCrystalDataset
 from neutral_layer.data.filtering import DatasetValidationError, ViolationCode
 from neutral_layer.data.vocab import SpeciesVocab
 

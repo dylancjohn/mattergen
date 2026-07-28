@@ -5,15 +5,16 @@ hydra:
 auto_resume: true
 
 # MatterGen with the species (element + oxidation-state) vocabulary AND the
-# structured charge-neutral training objective (NeutralMaterialsLoss).  Same
-# mp-20-os data and species vocab as `species.yaml`; only the atom-type loss
-# differs (diffusion_module: neutral).  Ablate the two terms via
-# lightning_module.diffusion_module.loss_fn.{vb_weight,ce_weight}.
+# structured charge-neutral training objective (make_neutral_d3pm_loss, injected
+# into MaterialsLoss.atomic_numbers_loss_partial).  Same mp-20-os data and species
+# vocab as `species.yaml`; only the atom-type loss differs
+# (diffusion_module: neutral_d3pm).  Ablate the two terms via
+# lightning_module.diffusion_module.loss_fn.atomic_numbers_loss_partial.{vb_weight,ce_weight}.
 defaults:
   - data_module: mp_20_species
   - trainer: default
   - lightning_module: default
-  - lightning_module/diffusion_module: neutral
+  - lightning_module/diffusion_module: neutral_d3pm
   - lightning_module/diffusion_module/model: mattergen_species
   - lightning_module/diffusion_module/corruption: species
   - _self_

@@ -1,7 +1,7 @@
 # D3PM corruption for the species vocabulary.
 #
 # dim = num_species + 1 is resolved at runtime via the species_vocab_size OmegaConf
-# resolver (registered in mattergen.constraints.resolvers).
+# resolver (registered in mattergen.common.data.species_resolvers).
 _target_: mattergen.diffusion.corruption.multi_corruption.MultiCorruption
 sdes:
   pos:
