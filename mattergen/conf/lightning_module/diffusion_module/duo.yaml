@@ -1,0 +1,29 @@
+_target_: mattergen.diffusion.diffusion_module.DiffusionModule
+loss_fn:
+  _target_: mattergen.common.loss.MaterialsLoss
+  reduce: sum
+  include_pos: True
+  include_cell: True
+  include_atomic_numbers: True
+  atomic_numbers_loss_partial:
+    _target_: mattergen.diffusion.duo.duo_loss.duo_loss
+    _partial_: true
+  weights:
+    cell: 1.0
+    pos: 0.1
+    atomic_numbers: 1.0
+model: mattergen_duo
+corruption: duo
+pre_corruption_fn:
+  _target_: mattergen.property_embeddings.SetEmbeddingType
+  p_unconditional: 0.2
+  dropout_fields_iid: false
+# Matches the reference implementation's own training-time floor
+# (duo/configs/config.yaml: training.sampling_eps=1e-3), rather than
+# MatterGen's D3PM-tuned default of 1e-5. Note the denoiser still conditions
+# on raw t (NoiseLevelEncoding), not on the reference's sigma = -log(alpha(t));
+# this is unchanged, shared MatterGen behaviour, not specific to this family.
+timestep_sampler:
+  _target_: mattergen.diffusion.timestep_samplers.UniformTimestepSampler
+  min_t: 1e-3
+  max_t: 1.0
