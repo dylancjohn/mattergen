@@ -41,3 +41,17 @@ def test_train_on_one_batch(config_name: str) -> None:
     _ = mattergen_main(config)
     # if we reach this, the test passed.
     assert True
+
+
+@pytest.mark.parametrize("config_name", ["mdlm", "duo", "species_mdlm", "species_duo"])
+def test_mdlm_duo_configs_use_reference_matched_min_t(config_name: str) -> None:
+    """MDLM/Duo entrypoints must override the timestep_sampler floor to 1e-3
+    (matching the reference implementations' own sampling_eps), not silently
+    inherit MatterGen's D3PM-tuned default of 1e-5."""
+    with hydra.initialize_config_dir(config_dir=CONFIG_DIR):
+        config = hydra.compose(config_name=config_name)
+
+    timestep_sampler_cfg = config.lightning_module.diffusion_module.timestep_sampler
+    sampler = hydra.utils.instantiate(timestep_sampler_cfg)
+    assert sampler.min_t == pytest.approx(1e-3)
+    assert sampler.max_t == pytest.approx(1.0)
