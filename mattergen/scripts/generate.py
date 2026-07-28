@@ -65,11 +65,16 @@ def main(
     sampling_config_overrides = sampling_config_overrides or []
     config_overrides = config_overrides or []
     # Disable generating element types which are not supported or not in the desired chemical
-    # system (if provided). mask_disallowed_elements operates over the element vocab; skip it
-    # for species models where logits are over species indices, not atomic numbers.
+    # system (if provided). mask_disallowed_elements operates over the element vocab; species
+    # models use mask_disallowed_species instead, which applies the same SELECTED_ATOMIC_NUMBERS
+    # allow-list over species indices (derived from the vocabulary at runtime).
     if not use_species_vocab:
         config_overrides += [
             "++lightning_module.diffusion_module.model.element_mask_func={_target_:'mattergen.denoiser.mask_disallowed_elements',_partial_:True}"
+        ]
+    else:
+        config_overrides += [
+            "++lightning_module.diffusion_module.model.element_mask_func={_target_:'mattergen.denoiser.mask_disallowed_species',_partial_:True}"
         ]
     properties_to_condition_on = properties_to_condition_on or {}
     target_compositions = target_compositions or []

@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
+from functools import lru_cache
 from typing import Callable
 
 import torch
@@ -16,6 +17,7 @@ from mattergen.property_embeddings import (
     get_property_embeddings,
     get_use_unconditional_embedding,
 )
+from neutral_layer.data.vocab import build_species_vocab
 
 BatchTransform = Callable[[ChemGraph], ChemGraph]
 
@@ -123,6 +125,60 @@ def mask_disallowed_elements(
         logits = mask_logits(logits, keep_logits[batch_idx])
 
     return logits
+
+
+@lru_cache(maxsize=None)
+def _selected_species_keep_mask(
+    num_classes: int, predictions_are_zero_based: bool
+) -> torch.Tensor:
+    """k-hot keep-mask ``(1, num_classes)`` for species whose element is in ``SELECTED_ATOMIC_NUMBERS``.
+
+    Derived from the current species vocabulary at runtime -- species indices are not frozen,
+    so the allow-list cannot be hardcoded. Static across sampling steps, hence cached (on CPU;
+    callers move it to the logits' device).
+    """
+    vocab = build_species_vocab()
+    allowed_species_indices = torch.tensor(
+        vocab.species_indices_for_elements(SELECTED_ATOMIC_NUMBERS), dtype=torch.long
+    )
+    predictions_are_one_based = not predictions_are_zero_based
+    # (num_allowed, num_classes) -- 1-based species indices map to 0-based columns via the
+    # ``- 1`` inside atomic_numbers_to_mask, exactly as for atomic numbers. The trailing MASK
+    # column is never in the allow-list, so it is masked out just like in the element version.
+    one_hot_selected_species = atomic_numbers_to_mask(
+        atomic_numbers=allowed_species_indices + int(predictions_are_one_based),
+        max_atomic_num=num_classes,
+    )
+    return one_hot_selected_species.sum(0)[None]
+
+
+def mask_disallowed_species(
+    logits: torch.FloatTensor,
+    x: ChemGraph | None = None,
+    batch_idx: torch.LongTensor | None = None,
+    predictions_are_zero_based: bool = True,
+) -> torch.FloatTensor:
+    """Species analog of :func:`mask_disallowed_elements`.
+
+    Restricts generation to species whose parent element is in ``SELECTED_ATOMIC_NUMBERS`` by
+    setting all other species logits to ~-inf. Because species indices are not frozen, the
+    allow-list is derived from the current species vocabulary at runtime rather than hardcoded.
+
+    Unlike the element version, this applies the global allow-list only -- there is no
+    per-crystal chemical-system conditioning branch for species models.
+
+    Args:
+        logits (torch.FloatTensor): Logits of shape (num_atoms, num_classes) over species
+            indices (plus a trailing MASK column when using mask diffusion).
+        x (ChemGraph, optional): Unused; accepted for ``element_mask_func`` signature compatibility.
+        batch_idx (torch.LongTensor, optional): Unused; accepted for signature compatibility.
+        predictions_are_zero_based (bool, optional): Whether the logits are zero-based. Defaults
+            to True (D3PM predicts a zero-based species index).
+    """
+    keep_mask = _selected_species_keep_mask(
+        logits.shape[1], predictions_are_zero_based
+    ).to(logits.device)
+    return mask_logits(logits=logits, mask=keep_mask)
 
 
 def get_chemgraph_from_denoiser_output(

@@ -251,3 +251,48 @@ def test_mask_disallowed_elements(zero_based_predictions: bool):
             assert set(sampled_types).difference(set(chemsys)) == set()
         else:
             assert set(sampled_types).difference(set(chemsys)) != set()
+
+
+def test_selected_atomic_numbers_subset_of_vocab():
+    """The generation allow-list must live inside the (broader) species vocabulary."""
+    from mattergen.common.utils.globals import SELECTED_ATOMIC_NUMBERS
+    from neutral_layer.data.vocab import ELEMENT_SYMBOLS
+    from pymatgen.core import Element
+
+    vocab_z = {Element(s).Z for s in ELEMENT_SYMBOLS}
+    assert set(SELECTED_ATOMIC_NUMBERS).issubset(vocab_z)
+
+
+@pytest.mark.parametrize("zero_based_predictions", [True, False])
+def test_mask_disallowed_species(zero_based_predictions: bool):
+    from mattergen.common.utils.globals import SELECTED_ATOMIC_NUMBERS
+    from mattergen.denoiser import mask_disallowed_species
+    from neutral_layer.data.vocab import build_species_vocab
+
+    vocab = build_species_vocab()
+    selected = set(SELECTED_ATOMIC_NUMBERS)
+    allowed_idx = set(vocab.species_indices_for_elements(SELECTED_ATOMIC_NUMBERS))
+
+    # The broadened vocab genuinely contains species whose element is outside the
+    # generation set (e.g. Xe, U), otherwise the mask would be a no-op.
+    assert any(
+        vocab.atomic_number_of(i) not in selected for i in range(1, vocab.num_species + 1)
+    )
+
+    num_classes = vocab.num_species + 1  # mask diffusion: species columns + trailing MASK
+    example_logits = torch.zeros(4, num_classes)
+    masked_logits = mask_disallowed_species(
+        logits=example_logits, predictions_are_zero_based=zero_based_predictions
+    )
+
+    # Exactly the allowed species columns survive; everything else (incl. the MASK column
+    # and all excluded-element species) is driven to ~-inf. 1-based species index k maps to
+    # column k-1 (zero-based preds) or column k (one-based preds), matching the mask logic.
+    shift = 0 if zero_based_predictions else 1
+    kept_cols = set((masked_logits[0] > -1e5).nonzero().flatten().tolist())
+    assert kept_cols == {idx - 1 + shift for idx in allowed_idx}
+
+    if zero_based_predictions:
+        assert masked_logits[0, vocab.num_species].item() < -1e5  # MASK column masked
+        xe = [i for i in range(1, vocab.num_species + 1) if vocab.atomic_number_of(i) == 54]
+        assert xe and all(masked_logits[0, i - 1].item() < -1e5 for i in xe)
