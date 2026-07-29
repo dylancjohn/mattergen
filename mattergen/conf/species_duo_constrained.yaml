@@ -1,0 +1,19 @@
+hydra:
+  run:
+    dir: ${oc.env:OUTPUT_DIR,outputs/singlerun/${now:%Y-%m-%d}/${now:%H-%M-%S}}
+
+auto_resume: true
+
+# MatterGen with the species (element + oxidation-state) vocabulary, Duo
+# atom-type diffusion, AND the structured charge-neutral training objective
+# (make_neutral_duo_loss, injected into MaterialsLoss.atomic_numbers_loss_partial).
+# Same mp-20-os data and species vocab as species_duo.yaml; only the atom-type
+# loss differs (diffusion_module: neutral_duo).
+defaults:
+  - data_module: mp_20_species
+  - trainer: default
+  - lightning_module: default
+  - lightning_module/diffusion_module: neutral_duo
+  - lightning_module/diffusion_module/model: mattergen_duo_species
+  - lightning_module/diffusion_module/corruption: duo_species
+  - _self_
