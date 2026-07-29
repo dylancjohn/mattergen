@@ -7,7 +7,7 @@ auto_resume: True
 # MatterGen with the element-only vocabulary and unconstrained MDLM atom-type
 # diffusion, mirroring default.yaml (D3PM) with only the diffusion family swapped.
 defaults:
-  - data_module: mp_20
+  - data_module: mp_20_os
   - trainer: default
   - lightning_module: default
   - lightning_module/diffusion_module: mdlm

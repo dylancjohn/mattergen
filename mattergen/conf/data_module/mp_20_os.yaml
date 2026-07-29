@@ -6,4 +6,4 @@ defaults:
 # and dft_band_gap.json in this cache dir are simply ignored.
 root_dir: ${oc.env:MP_20_OS_DATA_DIR,${oc.env:PROJECT_ROOT}/../datasets/mp-20-os}
 
-max_epochs: 1200
+max_epochs: 900
