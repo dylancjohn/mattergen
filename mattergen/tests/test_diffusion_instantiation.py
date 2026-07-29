@@ -43,7 +43,17 @@ def test_train_on_one_batch(config_name: str) -> None:
     assert True
 
 
-@pytest.mark.parametrize("config_name", ["mdlm", "duo", "species_mdlm", "species_duo"])
+@pytest.mark.parametrize(
+    "config_name",
+    [
+        "mdlm",
+        "duo",
+        "species_mdlm",
+        "species_duo",
+        "species_mdlm_constrained",
+        "species_duo_constrained",
+    ],
+)
 def test_mdlm_duo_configs_use_reference_matched_min_t(config_name: str) -> None:
     """MDLM/Duo entrypoints must override the timestep_sampler floor to 1e-3
     (matching the reference implementations' own sampling_eps), not silently
