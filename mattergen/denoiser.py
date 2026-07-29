@@ -45,7 +45,7 @@ def mask_logits(logits: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: Masked logits
     """
-    return logits + (1 - mask) * -1e10
+    return logits.masked_fill(mask == 0, float("-inf"))
 
 
 def mask_disallowed_elements(

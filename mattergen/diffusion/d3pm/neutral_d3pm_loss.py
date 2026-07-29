@@ -14,6 +14,7 @@ from neutral_layer.generation.dp import compute_q_max, flat_to_padded, neutral_l
 from torch.distributions import Categorical
 
 from mattergen.constraints.charges import build_charge_of
+from mattergen.diffusion.corruption.candidate_pinning import pin_committed_candidates
 from mattergen.diffusion.corruption.corruption import Corruption
 from mattergen.diffusion.discrete_time import to_discrete_time
 
@@ -97,37 +98,6 @@ def _require_finite_partition(
         f"discrete times={times}, log_z={values}. Check the species vocabulary, "
         "pinned assignments, and model logits."
     )
-
-
-def _pin_denominator_logits(
-    logits_pad: torch.Tensor,
-    xt_pad: torch.LongTensor,
-    attention_mask: torch.BoolTensor,
-    mask_idx: int,
-) -> torch.Tensor:
-    """Build the denominator's pinned logits (autograd-safe).
-
-    Committed sites (``x_t != MASK``) are collapsed to a one-hot at their known
-    clean value; the MASK column and padding are set to ``-inf``; masked real
-    sites keep their raw logits so gradients flow only there.
-    """
-    K = logits_pad.shape[-1]
-    committed = xt_pad != mask_idx  # [B, N]; padding is MASK-filled → not committed
-
-    # Committed → one-hot at the committed (== clean) species.
-    committed_one_hot = torch.full_like(logits_pad, float("-inf"))
-    committed_one_hot.scatter_(-1, xt_pad.clamp(min=0).unsqueeze(-1), 0.0)
-    pinned = torch.where(committed.unsqueeze(-1), committed_one_hot, logits_pad)
-
-    # Exclude the MASK column (never a valid clean species).
-    mask_col = F.one_hot(torch.tensor(mask_idx, device=logits_pad.device), K).bool()
-    pinned = torch.where(mask_col, torch.full_like(pinned, float("-inf")), pinned)
-
-    # Zero out padding.
-    pinned = torch.where(
-        attention_mask.unsqueeze(-1), pinned, torch.full_like(pinned, float("-inf"))
-    )
-    return pinned
 
 
 def _numerator_logits(
@@ -237,7 +207,7 @@ def neutral_d3pm_loss(
     q_max = compute_q_max(charge_of, int(n_sites.max().item()))
     _validate_neutral_targets(x0_pad, attention_mask, charge_tensor)
 
-    den_logits = _pin_denominator_logits(logits_pad, xt_pad, attention_mask, mask_idx)
+    den_logits = pin_committed_candidates(logits_pad, xt_pad, attention_mask, mask_idx)
 
     # Shared denominator log-partition (differentiable).
     log_z_den = neutral_log_z(den_logits, charge_tensor, q_max, n_sites)  # [B]

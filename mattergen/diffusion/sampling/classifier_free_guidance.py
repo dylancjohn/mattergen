@@ -18,6 +18,21 @@ def identity(x: Diffusable) -> Diffusable:
     return x
 
 
+def _combine_guided_scores(
+    unconditional_score: torch.Tensor, conditional_score: torch.Tensor, guidance_scale: float
+) -> torch.Tensor:
+    """Linearly combine scores, without turning a jointly-excluded (-inf) entry into NaN.
+
+    ``torch.lerp(-inf, -inf, w)`` is NaN for any `w` (the (end - start) term is
+    -inf - -inf), which happens whenever a hard allow-list masks the same logit
+    to -inf in both the conditional and unconditional branches (mask_logits now
+    uses exact -inf). Entries excluded in both branches must stay excluded.
+    """
+    combined = torch.lerp(unconditional_score, conditional_score, guidance_scale)
+    both_excluded = torch.isneginf(unconditional_score) & torch.isneginf(conditional_score)
+    return torch.where(both_excluded, combined.new_full((), float("-inf")), combined)
+
+
 class GuidedPredictorCorrector(PredictorCorrector):
     """
     Sampler for classifier-free guidance.
@@ -92,7 +107,7 @@ class GuidedPredictorCorrector(PredictorCorrector):
 
             return unconditional_score.replace(
                 **{
-                    k: torch.lerp(
+                    k: _combine_guided_scores(
                         unconditional_score[k], conditional_score[k], self._guidance_scale
                     )
                     for k in self._multi_corruption.corrupted_fields

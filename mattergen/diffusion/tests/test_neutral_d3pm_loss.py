@@ -26,11 +26,11 @@ from neutral_layer.generation.dp import compute_q_max, neutral_log_z
 from omegaconf import OmegaConf
 
 from mattergen.common.loss import MaterialsLoss
+from mattergen.diffusion.corruption.candidate_pinning import pin_committed_candidates
 from mattergen.diffusion.corruption.d3pm_corruption import D3PMCorruption
 from mattergen.diffusion.d3pm.d3pm import MaskDiffusion, create_discrete_diffusion_schedule
 from mattergen.diffusion.d3pm.neutral_d3pm_loss import (
     _numerator_logits,
-    _pin_denominator_logits,
     make_neutral_d3pm_loss,
     neutral_d3pm_loss,
 )
@@ -198,7 +198,7 @@ def test_intermediate_reverse_gradient_matches_full_enumeration():
     n_sites = torch.tensor([2], dtype=torch.long)
     q_max = compute_q_max(charges, 2)
 
-    den_logits = _pin_denominator_logits(raw_logits.unsqueeze(0), xt, attention, mask_idx)
+    den_logits = pin_committed_candidates(raw_logits.unsqueeze(0), xt, attention, mask_idx)
     num_logits = _numerator_logits(den_logits, xt, s_prev, attention, mask_idx)
     dp_loss = (
         neutral_log_z(den_logits, charge_tensor, q_max, n_sites)
