@@ -5,7 +5,7 @@ _target_: mattergen.common.data.species_datamodule.SpeciesDataModule
 # have the same density distribution as mp-20, so we reuse that value.
 average_density: 0.05771451654022283  # atoms/Angstrom**3
 
-max_epochs: 1200
+max_epochs: 900
 
 # Override via env var SPECIES_DATA_DIR if the dataset lives elsewhere.
 data_dir: ${oc.env:SPECIES_DATA_DIR,${oc.env:PROJECT_ROOT}/../datasets/mp-20-os}

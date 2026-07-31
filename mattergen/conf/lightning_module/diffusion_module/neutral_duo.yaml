@@ -13,7 +13,11 @@ loss_fn:
   weights:
     cell: 1.0
     pos: 0.1
-    atomic_numbers: 1.0
+    # Down-weighted from D3PM's default of 1.0: the continuous-time Duo NELBO's
+    # rate weighting makes the raw atom-type loss magnitude ~10x D3PM's bounded
+    # discrete-time KL, which was starving cell/pos of gradient signal under
+    # the shared value-based gradient clip.
+    atomic_numbers: 0.1
 model: mattergen_duo
 corruption: duo
 pre_corruption_fn:
