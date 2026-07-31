@@ -56,10 +56,23 @@ def evaluate(
         )
     else:
         relaxed_structures = structures
+
+    # Strip oxidation states before metric computation. Structure matching against
+    # the reference dataset (which has plain Element sites) requires OS-free
+    # structures; leaving Species sites would inflate novelty and uniqueness scores.
+    # The OS-decorated structures are still returned by relax_structures for saving.
+    def _strip_os(strucs: list[Structure]) -> list[Structure]:
+        stripped = []
+        for s in strucs:
+            s_copy = s.copy()
+            s_copy.remove_oxidation_states()
+            stripped.append(s_copy)
+        return stripped
+
     evaluator = MetricsEvaluator.from_structures_and_energies(
-        structures=relaxed_structures,
+        structures=_strip_os(relaxed_structures),
         energies=energies,
-        original_structures=structures,
+        original_structures=_strip_os(structures),
         reference=reference,
         structure_matcher=structure_matcher,
         energy_correction_scheme=energy_correction_scheme

@@ -11,11 +11,7 @@ loss_fn:
   weights:
     cell: 1.0
     pos: 0.1
-    # Down-weighted from D3PM's default of 1.0: the continuous-time MDLM NELBO's
-    # lambda_MDLM(t) = 1/t weighting (LogLinearSchedule) makes the raw atom-type
-    # loss magnitude ~10x D3PM's bounded discrete-time KL, which was starving
-    # cell/pos of gradient signal under the shared value-based gradient clip.
-    atomic_numbers: 0.1
+    atomic_numbers: 0.01
 model: mattergen
 corruption: mdlm
 pre_corruption_fn:

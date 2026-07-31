@@ -3,6 +3,7 @@
 
 import logging
 import os
+import re
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Sequence
@@ -157,9 +158,26 @@ def load_structures(input_path: Path) -> Sequence[Structure]:
         raise ValueError(f"Invalid input path {input_path}")
 
 
+_GEN_CIF_INDEX_RE = re.compile(r"^gen_(\d+)\.cif$")
+
+
+def _cif_sort_key(filename: str) -> tuple[float, str]:
+    """Order gen_{ix}.cif files by their numeric index, not filesystem/lexicographic order.
+
+    save_structures() writes generated_crystals.extxyz and generated_crystals_cif.zip
+    from the same structures list, in the same index order. os.listdir() returns
+    entries in arbitrary filesystem order (and even a naive alphabetical sort would
+    put "gen_10.cif" before "gen_2.cif"), which desyncs the CIF read order from the
+    extxyz frame order. Sorting by the embedded index restores the 1:1 correspondence.
+    Files not matching the gen_{ix}.cif pattern sort after all indexed ones, by name.
+    """
+    match = _GEN_CIF_INDEX_RE.match(filename)
+    return (float(match.group(1)) if match else float("inf"), filename)
+
+
 def extract_structures_from_folder(dirname: str) -> Sequence[Structure]:
     structures = []
-    for filename in os.listdir(dirname):
+    for filename in sorted(os.listdir(dirname), key=_cif_sort_key):
         if filename.endswith(".cif"):
             try:
                 structures.append(Structure.from_file(f"{dirname}/{filename}"))
