@@ -9,6 +9,7 @@ import numpy as np
 from pymatgen.core import Structure
 from pymatgen.entries.compatibility import Compatibility, MaterialsProject2020Compatibility
 from pymatgen.entries.computed_entries import ComputedStructureEntry
+from pymatgen.symmetry.analyzer import SymmetryUndeterminedError
 
 from mattergen.evaluation.utils.utils import compute_rmsd_angstrom, preprocess_structure
 from mattergen.evaluation.utils.vasprunlike import VasprunLike
@@ -63,11 +64,18 @@ class MetricsStructureSummary:
     def rmsd_from_relaxation(self) -> float:
         if self.original_structure is None:
             return np.nan  # Return nan since it cannot compute rmsd
-        else:
+        try:
             return compute_rmsd_angstrom(
                 self.entry.structure,
                 preprocess_structure(self.original_structure),
             )
+        except SymmetryUndeterminedError:
+            warnings.warn(
+                "Symmetry could not be determined for structure "
+                f"{self.entry.structure.composition.reduced_formula}; "
+                "skipping RMSD computation and returning nan."
+            )
+            return np.nan
 
     @property
     def structure(self) -> Structure:
