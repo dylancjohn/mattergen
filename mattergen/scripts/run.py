@@ -30,7 +30,13 @@ def mattergen_main(cfg: omegaconf.DictConfig):
     OmegaConf.set_readonly(config, True)  # should not be written to
     print(OmegaConf.to_yaml(cfg, resolve=True))
 
-    main(config)
+    # Optional reproducibility seed, passed via `params.seed=<int>` (params is a
+    # free-form dict -- see Config.params -- so this needs no schema change and
+    # is captured in the saved config.yaml / W&B config for free). Absent by
+    # default, matching mattergen.diffusion.run.main's own "seed=None -> skip
+    # seeding" behaviour.
+    seed = config.params.get("seed")
+    main(config, seed=seed)
 
 
 if __name__ == "__main__":
