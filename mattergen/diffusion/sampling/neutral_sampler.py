@@ -6,8 +6,6 @@ D3PM and MDLM predictors.
 
 from __future__ import annotations
 
-from typing import Optional
-
 import torch
 from neutral_layer.generation.dp import (
     compute_q_max,
@@ -39,8 +37,8 @@ class NeutralSampler:
 
     def __init__(
         self,
-        charge_of: Optional[list[int]] = None,
-        mask_idx: Optional[int] = None,
+        charge_of: list[int] | None = None,
+        mask_idx: int | None = None,
     ) -> None:
         if (charge_of is None) != (mask_idx is None):
             raise ValueError(
@@ -144,12 +142,7 @@ class NeutralSampler:
         # Draw a joint charge-neutral assignment via the backward DP table.
         samples, feasible = neutral_sample(pinned, charge_tensor, q_max, n_sites)
 
-        # Infeasibility must not happen during normal reverse sampling: every
-        # commitment comes from a neutral sample that extends the committed
-        # prefix, so a neutral completion always exists at the next step. A
-        # -inf log Z therefore signals an initialisation/vocabulary problem,
-        # unbalanceable externally-fixed atoms, or a numerical pathology —
-        # fail loudly rather than silently emit a non-neutral structure.
+        # Fail rather than silently emit a non-neutral structure.
         if not bool(feasible.all()):
             bad = (~feasible).nonzero(as_tuple=True)[0].tolist()
             committed_charge = {
@@ -178,6 +171,4 @@ class NeutralSampler:
         if padding.any():
             one_hot[padding] = logits_pad[padding]
 
-        return padded_to_flat(
-            one_hot, batch_idx, batch_size, validate_batch_idx=False
-        )
+        return padded_to_flat(one_hot, batch_idx, batch_size, validate_batch_idx=False)

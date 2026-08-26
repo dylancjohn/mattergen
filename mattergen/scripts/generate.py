@@ -94,7 +94,7 @@ def main(
         config_overrides: Overrides for the model config, e.g., `model.num_layers=3 model.hidden_dim=128`.
         properties_to_condition_on: Property value to draw conditional sampling with respect to. When this value is an empty dictionary (default), unconditional samples are drawn.
         sampling_config_path: Path to the sampling config file. (default: None, in which case we use `DEFAULT_SAMPLING_CONFIG_PATH` from explorers.common.utils.utils.py)
-        sampling_config_name: Name of the sampling config (corresponds to `{sampling_config_path}/{sampling_config_name}.yaml` on disk). Defaults to None, which auto-detects the config matching the checkpoint's trained atom-type family and constraint mode (falling back to "default" if that can't be determined, e.g. for non-atom-type-diffusion setups like CSP). Only pass this explicitly to override detection -- e.g. to intentionally sample a constrained/unconstrained checkpoint with the other's config.
+        sampling_config_name: Name of the sampling config (corresponds to `{sampling_config_path}/{sampling_config_name}.yaml` on disk). Defaults to None, which auto-detects the config matching the checkpoint's trained atom-type family and constraint mode, falling back to "default" if that can't be determined (e.g. for non-atom-type-diffusion setups like CSP). Pass explicitly to override detection.
         sampling_config_overrides: Overrides for the sampling config, e.g., `condition_loader_partial.batch_size=32`.
         load_epoch: Epoch to load from the checkpoint. If None, the best epoch is loaded. (default: None)
         record: Whether to record the trajectories of the generated structures. (default: True)
@@ -102,7 +102,7 @@ def main(
         target_compositions: List of dictionaries with target compositions to condition on. Each dictionary should have the form `{element: number_of_atoms}`. If None, the target compositions are not conditioned on.
            Only supported for models trained for crystal structure prediction (CSP) (default: None)
         progress_callback: Optional callback function that takes in a single float argument representing the progress of the generation process (between 0 and 1).
-        use_species_vocab: When True, decode generated atom types as species vocab indices (element + oxidation state) rather than plain atomic numbers. Defaults to None, which auto-detects from the checkpoint's own saved data_module config (whether it was trained with SpeciesDataModule). Only pass this explicitly to override detection.
+        use_species_vocab: When True, decode generated atom types as species vocab indices (element + oxidation state) rather than plain atomic numbers. Defaults to None, which auto-detects from the checkpoint's own saved data_module config. Pass explicitly to override detection.
     NOTE: When specifying dictionary values via the CLI, make sure there is no whitespace between the key and value, e.g., `--properties_to_condition_on={key1:value1}`.
     """
     assert (
@@ -134,9 +134,7 @@ def main(
 
     # Auto-detect whether this checkpoint was trained with the species vocabulary
     # (element + oxidation state) from its own saved data_module config, rather than
-    # trusting a caller-supplied flag: use_species_vocab previously defaulted to
-    # False, so a forgotten flag would silently install the wrong allow-list and
-    # decode species indices as plain atomic numbers instead of failing loudly.
+    # trusting a caller-supplied flag that could silently install the wrong allow-list.
     detected_species_vocab = (
         OmegaConf.select(checkpoint_info.config, "data_module._target_", default=None)
         == _SPECIES_DATAMODULE_TARGET
@@ -166,14 +164,7 @@ def main(
         )
     _sampling_config_path = Path(sampling_config_path) if sampling_config_path is not None else None
 
-    # Auto-detect the sampling_conf entrypoint matching this checkpoint's trained
-    # atom-type family and constraint mode, from its own saved training config.
-    # is_compatible() on the predictors only rejects cross-family mismatches (e.g.
-    # MDLM predictor on a D3PM checkpoint); it does not catch constrained-vs-
-    # unconstrained mismatches, since corruption classes are shared identically
-    # between a family's constrained and unconstrained variants. In particular,
-    # sampling a constrained-trained checkpoint with an unconstrained config
-    # silently drops the charge-neutrality guarantee with no error at all.
+    # Auto-detect the sampling_conf entrypoint matching this checkpoint
     detected_sampling_config_name = _detect_sampling_config_name(checkpoint_info.config)
     if sampling_config_name is None:
         sampling_config_name = detected_sampling_config_name or "default"

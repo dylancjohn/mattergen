@@ -452,27 +452,15 @@ def smact_validity(
 ) -> bool:
     """Computes SMACT validity.
 
-    Thin wrapper around smact's own `smact.screening.smact_validity` (smact>=4), which
-    supersedes the hand-rolled charge-neutrality/electronegativity search this function used to
-    reimplement itself (that recipe was written against the smact<4 `neutral_ratios` API, which
-    changed its return shape in smact 4 -- see git history). Kept as a wrapper -- same call
-    signature every caller in this file already uses -- around a pymatgen `Composition` built
-    from `comp`/`count`, so `is_smact_valid` and the aggregate metrics below don't need to change.
-
-    This picks smact 4's ICSD24-consensus-filtered oxidation-state universe per element (via
-    `consensus`/`commonality`, below), rather than each element's full built-in `oxidation_states`
-    list the old reimplementation searched -- a deliberate behaviour change versus that old
-    recipe, so comp_validity numbers from before this change are not directly comparable to
-    numbers computed after it.
-
-    `consensus`/`commonality` are passed straight through to smact's `ICSD24FilterConfig` and
-    default to `consensus=3, commonality="low"` -- i.e. every oxidation state with at least 3
-    ICSD literature occurrences, with no further proportion-based exclusion. This matches
-    `ICSD24OxStatesFilter.filter()`'s own default and this repo's other ICSD24-based SMACT
-    scoring (e.g. the results notebook's `SmactContinuousReward`, which also filters on
-    `consensus` alone). It is deliberately *not* `smact.screening.smact_validity`'s own default
-    (`ICSD24FilterConfig()`, i.e. `commonality="medium"`), which additionally excludes any
-    oxidation state below 10% occurrence for its element and is considerably stricter.
+    Thin wrapper around `smact.screening.smact_validity` (smact>=4), built around a
+    pymatgen `Composition` constructed from `comp`/`count` so callers keep the same
+    call signature. Oxidation states are filtered through smact's ICSD24-consensus
+    universe per element, controlled by `consensus`/`commonality` (passed straight
+    through to `smact.screening.ICSD24FilterConfig`); the default (`consensus=3,
+    commonality="low"`) is looser than smact's own default (`commonality="medium"`),
+    which additionally excludes oxidation states below 10% occurrence for their
+    element. Validity results are therefore only comparable across calls made with
+    the same `consensus`/`commonality` settings.
 
     Args:
         comp: Tuple of atomic number or element names of elements in a crystal.

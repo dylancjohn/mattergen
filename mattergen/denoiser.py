@@ -1,11 +1,12 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-from functools import lru_cache
-from typing import Callable
+from collections.abc import Callable
+from functools import cache
 
 import torch
-import torch.nn as nn
+from neutral_layer.data.vocab import build_species_vocab
+from torch import nn
 
 from mattergen.common.data.chemgraph import ChemGraph
 from mattergen.common.data.types import PropertySourceId
@@ -17,12 +18,13 @@ from mattergen.property_embeddings import (
     get_property_embeddings,
     get_use_unconditional_embedding,
 )
-from neutral_layer.data.vocab import build_species_vocab
 
 BatchTransform = Callable[[ChemGraph], ChemGraph]
 
 
-def atomic_numbers_to_mask(atomic_numbers: torch.LongTensor, max_atomic_num: int) -> torch.Tensor:
+def atomic_numbers_to_mask(
+    atomic_numbers: torch.LongTensor, max_atomic_num: int
+) -> torch.Tensor:
     """Convert atomic numbers to a mask.
 
     Args:
@@ -31,7 +33,9 @@ def atomic_numbers_to_mask(atomic_numbers: torch.LongTensor, max_atomic_num: int
     Returns:
         torch.Tensor: Mask of shape (batch_size, num_classes)
     """
-    k_hot_mask = torch.eye(max_atomic_num, device=atomic_numbers.device)[atomic_numbers - 1]
+    k_hot_mask = torch.eye(max_atomic_num, device=atomic_numbers.device)[
+        atomic_numbers - 1
+    ]
     return k_hot_mask
 
 
@@ -65,18 +69,15 @@ def mask_disallowed_elements(
         predictions_are_zero_based (bool, optional): Whether the logits are zero-based. Defaults to True. Basically, if we're using D3PM,
             the logits are zero-based (model predicts atomic number index)
     """
-    # First, mask out generally undesired elements
-    # (1, num_selected_elements)
-    selected_atomic_numbers = torch.tensor(SELECTED_ATOMIC_NUMBERS, device=logits.device)
+    selected_atomic_numbers = torch.tensor(
+        SELECTED_ATOMIC_NUMBERS, device=logits.device
+    )
     predictions_are_one_based = not predictions_are_zero_based
-    # (num_atoms, num_classes)
     one_hot_selected_elements = atomic_numbers_to_mask(
         atomic_numbers=selected_atomic_numbers + int(predictions_are_one_based),
         max_atomic_num=logits.shape[1],
     )
-    # (1, num_classes)
     k_hot_mask = one_hot_selected_elements.sum(0)[None]
-    # Set the logits for disallowed elements to -inf
     logits = mask_logits(logits=logits, mask=k_hot_mask)
 
     # Optionally, also mask out elements that are not in the chemical system we condition on
@@ -89,22 +90,32 @@ def mask_disallowed_elements(
         except KeyError:
             # if no mask provided to use conditional/unconditional labels then do not mask logits
             do_not_mask_atom_logits = torch.ones(
-                (len(x["chemical_system"]), 1), dtype=torch.bool, device=x["num_atoms"].device
+                (len(x["chemical_system"]), 1),
+                dtype=torch.bool,
+                device=x["num_atoms"].device,
             )
 
         # mypy
-        assert batch_idx is not None, "batch_idx must be provided if condition is not None"
+        assert batch_idx is not None, (
+            "batch_idx must be provided if condition is not None"
+        )
         # Only mask atom types where the condition is not masked
         # A 1 means that we do not alter the logit, a 0 means that we change the logit to -inf
         # keep_logits.shape=(Nbatch, MAX_ATOMIC_NUM+1)
 
         # 1 = keep logit, 0 = set logit to -inf, shape = (Nbatch, MAX_ATOMIC_NUM+1)
-        keep_all_logits = torch.ones((len(x["chemical_system"]), 1), device=x["num_atoms"].device)
+        keep_all_logits = torch.ones(
+            (len(x["chemical_system"]), 1), device=x["num_atoms"].device
+        )
 
         # torch.Tensor, shape=(Nbatch,MAX_ATOMIC_NUM+1) -- 1s where elements are present in chemical system condition, 0 elsewhere
-        multi_hot_chemical_system = ChemicalSystemMultiHotEmbedding.sequences_to_multi_hot(
-            x=ChemicalSystemMultiHotEmbedding.convert_to_list_of_str(x=x["chemical_system"]),
-            device=x["num_atoms"].device,
+        multi_hot_chemical_system = (
+            ChemicalSystemMultiHotEmbedding.sequences_to_multi_hot(
+                x=ChemicalSystemMultiHotEmbedding.convert_to_list_of_str(
+                    x=x["chemical_system"]
+                ),
+                device=x["num_atoms"].device,
+            )
         )
 
         keep_logits = torch.where(
@@ -120,14 +131,16 @@ def mask_disallowed_elements(
             # If we use mask diffusion, logits is shape [batch_size, MAX_ATOMIC_NUM + 1]
             # instead of [batch_size, MAX_ATOMIC_NUM], so we have to add one dummy column
             if keep_logits.shape[1] == logits.shape[1] - 1:
-                keep_logits = torch.cat([keep_logits, torch.zeros_like(keep_logits[:, :1])], dim=-1)
+                keep_logits = torch.cat(
+                    [keep_logits, torch.zeros_like(keep_logits[:, :1])], dim=-1
+                )
         # Mask out all logits outside the chemical system we condition on
         logits = mask_logits(logits, keep_logits[batch_idx])
 
     return logits
 
 
-@lru_cache(maxsize=None)
+@cache
 def _selected_species_keep_mask(
     num_classes: int, predictions_are_zero_based: bool
 ) -> torch.Tensor:
@@ -142,9 +155,6 @@ def _selected_species_keep_mask(
         vocab.species_indices_for_elements(SELECTED_ATOMIC_NUMBERS), dtype=torch.long
     )
     predictions_are_one_based = not predictions_are_zero_based
-    # (num_allowed, num_classes) -- 1-based species indices map to 0-based columns via the
-    # ``- 1`` inside atomic_numbers_to_mask, exactly as for atomic numbers. The trailing MASK
-    # column is never in the allow-list, so it is masked out just like in the element version.
     one_hot_selected_species = atomic_numbers_to_mask(
         atomic_numbers=allowed_species_indices + int(predictions_are_one_based),
         max_atomic_num=num_classes,
@@ -192,14 +202,13 @@ def get_chemgraph_from_denoiser_output(
     """
     Convert raw denoiser output to ChemGraph and optionally apply masking to element logits.
 
-    Keyword arguments
-    -----------------
-    pred_atom_atoms: predicted logits for atom types
-    pred_lattice_eps: predicted lattice noise
-    pred_cart_pos_eps: predicted cartesian position noise
-    training: whether or not the model is in training mode - logit masking is only applied when sampling
-    element_mask_func: when not training, a function can be applied to mask logits for certain atom types
-    x_input: the nosiy state input to the score model, contains the lattice to convert cartesisan to fractional noise.
+    Args:
+        pred_atom_atoms: predicted logits for atom types
+        pred_lattice_eps: predicted lattice noise
+        pred_cart_pos_eps: predicted cartesian position noise
+        training: whether or not the model is in training mode - logit masking is only applied when sampling
+        element_mask_func: when not training, a function can be applied to mask logits for certain atom types
+        x_input: the nosiy state input to the score model, contains the lattice to convert cartesisan to fractional noise.
     """
     if not training and element_mask_func:
         # when sampling we may want to mask logits for atom types depending on info in x['chemical_system'] and x['chemical_system_MASK']
@@ -252,7 +261,7 @@ class GemNetTDenoiser(ScoreModel):
                 Use ``MAX_ATOMIC_NUM`` (default) for element-only mode or ``vocab.num_species`` for species mode.
             condition_on (Optional[List[str]], optional): Which aspects of the data to condition on. Strings must be in ["property", "chemical_system"]. If None (default), condition on ["chemical_system"].
         """
-        super(GemNetTDenoiser, self).__init__()
+        super().__init__()
 
         self.gemnet = gemnet
         self.noise_level_encoding = NoiseLevelEncoding(hidden_dim)
@@ -302,7 +311,9 @@ class GemNetTDenoiser(ScoreModel):
         )
 
         if len(property_embedding_values) > 0:
-            z_per_crystal = torch.cat([z_per_crystal, property_embedding_values], dim=-1)
+            z_per_crystal = torch.cat(
+                [z_per_crystal, property_embedding_values], dim=-1
+            )
 
         output = self.gemnet(
             z=z_per_crystal,
