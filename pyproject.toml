@@ -67,7 +67,7 @@ dependencies = [
 "pytorch-lightning==2.0.6",
 "seaborn>=0.13.2",  # for plotting
 "setuptools<81",
-"SMACT",
+"SMACT==4.0.0",
 "sympy>=1.11.1",
 "torch==2.2.1+cu118; sys_platform == 'linux'", 
 "torchvision==0.17.1+cu118; sys_platform == 'linux'",

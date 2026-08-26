@@ -1,7 +1,6 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-import itertools
 from collections import Counter
 from copy import deepcopy
 from dataclasses import dataclass
@@ -11,13 +10,13 @@ from typing import Literal, Sequence
 import cachetools
 import numpy as np
 import numpy.typing
-import smact
 from pandas import DataFrame
-from pymatgen.core.composition import Element
+from pymatgen.core.composition import Composition, Element
 from pymatgen.core.structure import Structure
 from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
 from scipy.stats import wasserstein_distance
-from smact.screening import pauling_test
+from smact.screening import ICSD24FilterConfig
+from smact.screening import smact_validity as _smact_screening_validity
 from tqdm import tqdm
 
 from mattergen.evaluation.metrics.core import BaseAggregateMetric, BaseMetric, BaseMetricsCapability
@@ -447,10 +446,33 @@ def smact_validity(
     count: tuple[int, ...],
     use_pauling_test: bool = True,
     include_alloys: bool = True,
-    include_cutoff: bool = False,
     use_element_symbol: bool = False,
+    consensus: int = 3,
+    commonality: str | float = "low",
 ) -> bool:
     """Computes SMACT validity.
+
+    Thin wrapper around smact's own `smact.screening.smact_validity` (smact>=4), which
+    supersedes the hand-rolled charge-neutrality/electronegativity search this function used to
+    reimplement itself (that recipe was written against the smact<4 `neutral_ratios` API, which
+    changed its return shape in smact 4 -- see git history). Kept as a wrapper -- same call
+    signature every caller in this file already uses -- around a pymatgen `Composition` built
+    from `comp`/`count`, so `is_smact_valid` and the aggregate metrics below don't need to change.
+
+    This picks smact 4's ICSD24-consensus-filtered oxidation-state universe per element (via
+    `consensus`/`commonality`, below), rather than each element's full built-in `oxidation_states`
+    list the old reimplementation searched -- a deliberate behaviour change versus that old
+    recipe, so comp_validity numbers from before this change are not directly comparable to
+    numbers computed after it.
+
+    `consensus`/`commonality` are passed straight through to smact's `ICSD24FilterConfig` and
+    default to `consensus=3, commonality="low"` -- i.e. every oxidation state with at least 3
+    ICSD literature occurrences, with no further proportion-based exclusion. This matches
+    `ICSD24OxStatesFilter.filter()`'s own default and this repo's other ICSD24-based SMACT
+    scoring (e.g. the results notebook's `SmactContinuousReward`, which also filters on
+    `consensus` alone). It is deliberately *not* `smact.screening.smact_validity`'s own default
+    (`ICSD24FilterConfig()`, i.e. `commonality="medium"`), which additionally excludes any
+    oxidation state below 10% occurrence for its element and is considerably stricter.
 
     Args:
         comp: Tuple of atomic number or element names of elements in a crystal.
@@ -460,8 +482,11 @@ def smact_validity(
             the lower the electronegativity of the element for all pairs of sites.
         include_alloys: if True, returns True without checking charge balance or electronegativity
             if the crystal is an alloy (consisting only of metals) (default: True).
-        include_cutoff: assumes valid crystal if the combination of oxidation states is more
-            than 10^6 (default: False).
+        consensus: Minimum number of ICSD literature occurrences for an oxidation state to be
+            considered valid (default: 3).
+        commonality: Excludes oxidation states below a proportion-of-occurrence threshold for
+            their element -- "low", "medium", "high", "main", or a float/int threshold, per
+            `smact.screening.ICSD24FilterConfig` (default: "low", i.e. no exclusion).
 
     Returns:
         True if the crystal is valid, False otherwise.
@@ -471,47 +496,11 @@ def smact_validity(
         elem_symbols = comp
     else:
         elem_symbols = tuple([str(Element.from_Z(Z=elem)) for elem in comp])  # type:ignore
-    space = smact.element_dictionary(elem_symbols)
-    smact_elems = [e[1] for e in space.items()]
-    electronegs = [e.pauling_eneg for e in smact_elems]
-    ox_combos = [e.oxidation_states for e in smact_elems]
-    if len(set(elem_symbols)) == 1:
-        return True
-    if include_alloys:
-        is_metal_list = [elem_s in smact.metals for elem_s in elem_symbols]
-        if all(is_metal_list):
-            return True
-
-    threshold = np.max(count)
-    compositions = []
-    n_comb = np.prod([len(ls) for ls in ox_combos])
-    # If the number of possible combinations is big, it'd take too much time to run the smact checker
-    # In this case, we assume that at least one of the combinations is valid
-    if n_comb > 1e6 and include_cutoff:
-        return True
-    for ox_states in itertools.product(*ox_combos):
-        stoichs = [(c,) for c in count]
-        # Test for charge balance
-        cn_e, cn_r = smact.neutral_ratios(ox_states, stoichs=stoichs, threshold=threshold)
-        # Electronegativity test
-        if cn_e:
-            if use_pauling_test:
-                try:
-                    electroneg_OK = pauling_test(ox_states, electronegs)
-                except TypeError:
-                    # if no electronegativity data, assume it is okay
-                    electroneg_OK = True
-            else:
-                electroneg_OK = True
-            if electroneg_OK:
-                for ratio in cn_r:
-                    compositions.append(tuple([elem_symbols, ox_states, ratio]))
-    compositions = [(i[0], i[2]) for i in compositions]
-    compositions = list(set(compositions))
-    if len(compositions) > 0:
-        return True
-    else:
-        return False
+    composition = Composition(dict(zip(elem_symbols, count)))
+    icsd_filter = ICSD24FilterConfig(consensus=consensus, commonality=commonality)
+    return _smact_screening_validity(
+        composition, use_pauling_test=use_pauling_test, include_alloys=include_alloys, icsd_filter=icsd_filter,
+    )
 
 
 def structure_validity(structure: Structure, cutoff: float = 0.5) -> bool:
