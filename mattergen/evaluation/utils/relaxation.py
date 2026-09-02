@@ -18,18 +18,32 @@ logger.level("ERROR")
 
 def relax_atoms(
     atoms: list[Atoms], device: str = str(get_device()), potential_load_path: str = None, output_path: str | None = None, **kwargs
-) -> tuple[list[Atoms], np.ndarray]:
+) -> tuple[list[Atoms], np.ndarray, list[int]]:
+    # A handful of generated structures can have a degenerate, near-zero-volume
+    # unit cell. With a fixed neighbor cutoff this makes the relaxer's neighbor
+    # list (and its three-body term) blow up over periodic images and exhausts
+    # GPU memory for the whole batch. Skip these before relaxing rather than let
+    # one bad structure crash every structure in the run; callers should count
+    # them as failed jobs instead of silently dropping them from the metrics.
+    MIN_CELL_VOLUME_A3 = 0.1
+    keep_idx = [i for i, a in enumerate(atoms) if a.get_volume() >= MIN_CELL_VOLUME_A3]
+    if len(keep_idx) < len(atoms):
+        logger.warning(
+            f"Skipping relaxation for {len(atoms) - len(keep_idx)} structure(s) "
+            f"with unit cell volume < {MIN_CELL_VOLUME_A3} A^3"
+        )
+
     potential = Potential.from_checkpoint(
         device=device, load_path=potential_load_path, load_training_state=False
     )
     batch_relaxer = BatchRelaxer(potential=potential, filter="EXPCELLFILTER", **kwargs)
-    relaxation_trajectories = batch_relaxer.relax(atoms)
+    relaxation_trajectories = batch_relaxer.relax([atoms[i] for i in keep_idx])
     relaxed_atoms = [t[-1] for t in relaxation_trajectories.values()]
     total_energies = np.array([a.info["total_energy"] for a in relaxed_atoms])
     if output_path:
         write(output_path, relaxed_atoms, format="extxyz")
         logger.info(f"Relaxed structures saved to {output_path}")
-    return relaxed_atoms, total_energies
+    return relaxed_atoms, total_energies, keep_idx
 
 
 def relax_structures(
@@ -38,13 +52,19 @@ def relax_structures(
     potential_load_path: str = None,
     output_path: str | None = None,
     **kwargs,
-) -> tuple[list[Structure], np.ndarray]:
+) -> tuple[list[Structure], np.ndarray, list[int]]:
     """Relax structures using a machine-learning force field.
 
     Oxidation states are preserved across the relaxation: per-site OS values are
     captured before conversion to ASE (which strips them) and re-attached to the
     relaxed pymatgen structures afterwards. This allows the returned structures to
     be saved as OS-decorated CIFs for downstream analysis.
+
+    Structures with a degenerate unit cell are skipped by `relax_atoms` (see its
+    docstring) rather than relaxed. The returned `keep_idx` gives the indices,
+    into the input `structures`, of the structures actually relaxed -- callers
+    must index any other per-structure list (e.g. the original structures) by
+    the same `keep_idx` to stay aligned with `relaxed_structures`/`energies`.
 
     Parameters
     ----------
@@ -72,14 +92,16 @@ def relax_structures(
             saved_os.append(None)
 
     atoms = [AseAtomsAdaptor.get_atoms(s) for s in structures]
-    relaxed_atoms, total_energies = relax_atoms(
+    relaxed_atoms, total_energies, keep_idx = relax_atoms(
         atoms, device=device, potential_load_path=potential_load_path, output_path=output_path, **kwargs
     )
     relaxed_structures = [AseAtomsAdaptor.get_structure(a) for a in relaxed_atoms]
 
     # Re-attach oxidation states so downstream CIF output retains OS labels.
-    for structure, os_list in zip(relaxed_structures, saved_os):
+    # Index saved_os by keep_idx: relax_atoms may have skipped some structures,
+    # so relaxed_structures no longer lines up 1:1 with the original ordering.
+    for structure, os_list in zip(relaxed_structures, (saved_os[i] for i in keep_idx)):
         if os_list is not None:
             structure.add_oxidation_state_by_site(os_list)
 
-    return relaxed_structures, total_energies
+    return relaxed_structures, total_energies, keep_idx

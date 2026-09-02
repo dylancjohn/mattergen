@@ -53,6 +53,11 @@ dependencies = [
 "hydra-joblib-launcher==1.1.5",
 "jupyterlab>=4.2.5",
 "lmdb",
+"matminer",  # composition/structure fingerprints for the CDVAE-style diversity metrics
+             # (mattergen.evaluation.metrics.diversity). Its pandas<3 pin is stale -- install
+             # matminer, scikit-learn and threadpoolctl below with `pip install --no-deps` to
+             # avoid a spurious pandas 3->2 downgrade; verified matminer's ElementProperty/
+             # CrystalNNFingerprint featurizers work fine against pandas 3.x in practice.
 "matplotlib==3.8.4",
 "matscipy>=0.7.0",
 "mattersim>=1.1",
@@ -65,10 +70,12 @@ dependencies = [
 "pylint",
 "pytest",
 "pytorch-lightning==2.0.6",
+"scikit-learn",  # matminer dependency; listed explicitly since matminer installs with --no-deps
 "seaborn>=0.13.2",  # for plotting
 "setuptools<81",
 "SMACT==4.0.0",
 "sympy>=1.11.1",
+"threadpoolctl",  # scikit-learn dependency; listed explicitly since matminer installs with --no-deps
 "torch==2.2.1+cu118; sys_platform == 'linux'", 
 "torchvision==0.17.1+cu118; sys_platform == 'linux'",
 "torchaudio==2.2.1+cu118; sys_platform == 'linux'",

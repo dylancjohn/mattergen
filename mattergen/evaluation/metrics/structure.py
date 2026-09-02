@@ -29,6 +29,13 @@ from mattergen.evaluation.utils.dataset_matcher import (
 )
 from mattergen.evaluation.utils.logging import logger
 from mattergen.evaluation.utils.metrics_structure_summary import MetricsStructureSummary
+from mattergen.evaluation.utils.oxidation_states import (
+    aggregate_marginalized_distribution,
+    is_alloy_or_single_element,
+    marginalized_occurrences,
+    mean_js_distance,
+    oxidation_state_commonality,
+)
 from mattergen.evaluation.utils.structure_matcher import (
     DisorderedStructureMatcher,
     OrderedStructureMatcher,
@@ -70,8 +77,19 @@ class StructureMetricsCapability(BaseMetricsCapability):
         structure_matcher: OrderedStructureMatcher
         | DisorderedStructureMatcher,  # how are uniqueness and novelty computed
         n_failed_jobs: int = 0,
+        exclude_alloys_and_single_element: bool = True,
+        exclude_nonchargeable: bool = True,
+        consensus: int = 3,
     ) -> None:
         super().__init__(structure_summaries=structure_summaries, n_failed_jobs=n_failed_jobs)
+        # Oxidation-state metrics (AvgOxidationStateCommonality, OxidationStateDistance) only:
+        # whether trivially-scoring alloy/single-element and non-chargeable compositions are
+        # excluded from the commonality average, and the minimum ICSD24 literature-occurrence
+        # count for an oxidation state to be considered admissible (matches `smact_validity`'s
+        # own default so "admissible" means the same thing across comp_validity/commonality).
+        self.exclude_alloys_and_single_element = exclude_alloys_and_single_element
+        self.exclude_nonchargeable = exclude_nonchargeable
+        self.consensus = consensus
         _structures = [s.structure for s in structure_summaries]
         all_structures_ordered = (
             all_structures_are_ordered(_structures) and reference_dataset.is_ordered
@@ -165,6 +183,15 @@ class StructureMetricsCapability(BaseMetricsCapability):
                 structure.composition.chemical_system in self.reference_dataset.entries_by_chemsys
                 for structure in self.structures
             ]
+        )
+
+    @cached_property
+    def alloy_or_single_element_mask(self) -> numpy.typing.NDArray[np.bool_]:
+        """Per structure: whether its composition is a pure-metal alloy or a single-element
+        compound, for which ionic oxidation state is undefined or trivial (OS=0). Shared by
+        `FracAlloyOrSingleElement` and the oxidation-state metrics below."""
+        return np.array(
+            [is_alloy_or_single_element(_composition_symbols_and_counts(s)[0]) for s in self.structures]
         )
 
     def as_dataframe(self) -> DataFrame:
@@ -369,6 +396,79 @@ class AvgCompValidity(BaseStructureMetric, BaseAggregateMetric):
         )
 
 
+class FracAlloyOrSingleElement(BaseStructureMetric, BaseAggregateMetric):
+    aggregation_method: Literal["mean"] = "mean"
+    name = "frac_alloy_or_single_element"
+    pre_aggregation_name = "is_alloy_or_single_element"
+
+    @property
+    def description(self) -> str:
+        return "Fraction of structures in sampled data that are pure-metal alloys or single-element compounds, for which ionic oxidation state is undefined or trivial."
+
+    def compute_pre_aggregation_values(self) -> numpy.typing.NDArray:
+        return self.structure_capability.alloy_or_single_element_mask
+
+
+class AvgOxidationStateCommonality(BaseStructureMetric, BaseAggregateMetric):
+    aggregation_method: Literal["mean"] = "mean"  # informational only -- `value` is overridden below
+    name = "avg_oxidation_state_commonality"
+    pre_aggregation_name = "oxidation_state_commonality"
+
+    @property
+    def description(self) -> str:
+        return "Average, across sampled structures, of how common each structure's best charge-neutral, Pauling-consistent oxidation-state assignment is in ICSD (geometric mean, across elements, of ICSD24 occurrence proportion); alloys/single-element compounds score 1.0, non-chargeable compositions score 0.0, both configurably excluded from the average (see `StructureMetricsCapability`)."
+
+    def compute_pre_aggregation_values(self) -> numpy.typing.NDArray:
+        values = []
+        for structure, trivial in zip(
+            self.structure_capability.structures, self.structure_capability.alloy_or_single_element_mask
+        ):
+            if trivial:
+                values.append(1.0)
+                continue
+            symbols, counts = _composition_symbols_and_counts(structure)
+            values.append(oxidation_state_commonality(symbols, counts, self.structure_capability.consensus))
+        return np.array(values)
+
+    @cached_property
+    def value(self) -> float:
+        # Exclusion, unlike `mean`/`nanmean`, must not corrupt `pre_aggregation_values` (still
+        # written out per-structure to metrics_per_structure.json) -- so it's applied here,
+        # not by writing NaN into the pre-aggregation array itself. Alloys/single-element
+        # structures always score 1.0 and non-chargeable compositions always score exactly
+        # 0.0 (see `compute_pre_aggregation_values`), so a plain `> 0` test identifies
+        # non-chargeable structures without recomputing anything.
+        values = self.pre_aggregation_values
+        mask = np.ones(len(values), dtype=bool)
+        if self.structure_capability.exclude_alloys_and_single_element:
+            mask &= ~self.structure_capability.alloy_or_single_element_mask
+        if self.structure_capability.exclude_nonchargeable:
+            mask &= values > 0.0
+        selected = values[mask]
+        return float(selected.mean()) if len(selected) else float("nan")
+
+
+class OxidationStateDistance(BaseStructureMetric):
+    name = "oxidation_state_distance"
+
+    @property
+    def description(self) -> str:
+        return f"Mean per-element Jensen-Shannon distance between the oxidation-state distribution of sampled structures and of {self.reference_dataset.name}, built on both sides by marginalising over every charge-neutral, Pauling-consistent oxidation-state assignment per composition rather than committing to a single labelling. Alloy/single-element and non-chargeable compositions contribute nothing on either side (nothing to marginalise over)."
+
+    @cached_property
+    def value(self) -> float:
+        consensus = self.structure_capability.consensus
+        generated_dist = aggregate_marginalized_distribution(
+            _oxidation_state_marginalized_occurrences(structure, consensus)
+            for structure in self.structure_capability.structures
+        )
+        reference_dist = aggregate_marginalized_distribution(
+            _oxidation_state_marginalized_occurrences(entry.structure, consensus)
+            for entry in self.reference_dataset
+        )
+        return mean_js_distance(generated_dist, reference_dist)
+
+
 class AvgStructureCompValidity(BaseStructureMetric, BaseAggregateMetric):
     aggregation_method: Literal["mean"] = "mean"
     name = "avg_structure_comp_validity"
@@ -417,6 +517,29 @@ class FracNovelSystems(BaseStructureMetric):
 # -----------------------------#
 # Utility functions
 # -----------------------------#
+
+
+def _composition_symbols_and_counts(structure: Structure) -> tuple[tuple[str, ...], tuple[int, ...]]:
+    """Distinct element symbols and their atom counts for a structure's composition, in a
+    canonical (atomic-number-sorted) order -- maximises cache hits in
+    `oxidation_states.enumerate_admissible_assignments`, which is memoized on these exact args.
+    """
+    elem_counter = Counter(structure.atomic_numbers)
+    ordered_z = sorted(elem_counter)
+    symbols = tuple(str(Element.from_Z(z)) for z in ordered_z)
+    counts = tuple(int(elem_counter[z]) for z in ordered_z)
+    return symbols, counts
+
+
+def _oxidation_state_marginalized_occurrences(
+    structure: Structure, consensus: int
+) -> dict[str, dict[int, float]] | None:
+    """`oxidation_states.marginalized_occurrences` for one structure's composition, or `None`
+    for an alloy/single-element composition (nothing to marginalise over)."""
+    symbols, counts = _composition_symbols_and_counts(structure)
+    if is_alloy_or_single_element(symbols):
+        return None
+    return marginalized_occurrences(symbols, counts, consensus)
 
 
 def is_smact_valid(structure: Structure) -> bool:

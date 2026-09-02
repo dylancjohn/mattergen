@@ -51,11 +51,19 @@ def evaluate(
     if relax and energies is not None:
         raise ValueError("Cannot accept energies if relax is True.")
     if relax:
-        relaxed_structures, energies = relax_structures(
+        relaxed_structures, energies, keep_idx = relax_structures(
             structures, device=device, potential_load_path=potential_load_path, output_path=structures_output_path
         )
+        # relax_structures may skip structures with a degenerate unit cell; keep
+        # them counted as failed jobs (via n_failed_jobs below) rather than
+        # dropped from the reported metrics, and subset the originals to match
+        # so structures/original_structures/energies stay index-aligned.
+        original_structures = [structures[i] for i in keep_idx]
+        n_failed_jobs = len(structures) - len(keep_idx)
     else:
         relaxed_structures = structures
+        original_structures = structures
+        n_failed_jobs = 0
 
     # Strip oxidation states before metric computation. Structure matching against
     # the reference dataset (which has plain Element sites) requires OS-free
@@ -72,7 +80,8 @@ def evaluate(
     evaluator = MetricsEvaluator.from_structures_and_energies(
         structures=_strip_os(relaxed_structures),
         energies=energies,
-        original_structures=_strip_os(structures),
+        original_structures=_strip_os(original_structures),
+        n_failed_jobs=n_failed_jobs,
         reference=reference,
         structure_matcher=structure_matcher,
         energy_correction_scheme=energy_correction_scheme
