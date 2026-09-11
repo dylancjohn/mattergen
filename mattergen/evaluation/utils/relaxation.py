@@ -19,18 +19,28 @@ logger.level("ERROR")
 def relax_atoms(
     atoms: list[Atoms], device: str = str(get_device()), potential_load_path: str = None, output_path: str | None = None, **kwargs
 ) -> tuple[list[Atoms], np.ndarray, list[int]]:
-    # A handful of generated structures can have a degenerate, near-zero-volume
-    # unit cell. With a fixed neighbor cutoff this makes the relaxer's neighbor
-    # list (and its three-body term) blow up over periodic images and exhausts
-    # GPU memory for the whole batch. Skip these before relaxing rather than let
-    # one bad structure crash every structure in the run; callers should count
-    # them as failed jobs instead of silently dropping them from the metrics.
-    MIN_CELL_VOLUME_A3 = 0.1
-    keep_idx = [i for i, a in enumerate(atoms) if a.get_volume() >= MIN_CELL_VOLUME_A3]
+    # A few generated structures can have a collapsed unit cell. The relaxer
+    # builds a fixed-cutoff neighbor graph, so edges grow with atom number
+    # density and three-body triplets with its square; a collapsed cell blows
+    # the graph up over periodic images and exhausts GPU memory. Because
+    # BatchRelaxer packs structures by atom count alone, one such structure
+    # takes down every structure batched with it. Skip them here instead, and
+    # count them as failed jobs rather than dropping them from the metrics.
+    #
+    # The threshold is per atom because density, not absolute volume, drives
+    # graph size: a 20-atom cell of 20 A^3 is as pathological as a 1-atom cell
+    # of 1 A^3. 2.0 A^3/atom sits well below the densest physically real
+    # crystal (diamond, 5.7 A^3/atom), so it only fires on degenerate samples.
+    MIN_VOLUME_PER_ATOM_A3 = 2.0
+    keep_idx = [
+        i
+        for i, a in enumerate(atoms)
+        if len(a) > 0 and a.get_volume() / len(a) >= MIN_VOLUME_PER_ATOM_A3
+    ]
     if len(keep_idx) < len(atoms):
         logger.warning(
             f"Skipping relaxation for {len(atoms) - len(keep_idx)} structure(s) "
-            f"with unit cell volume < {MIN_CELL_VOLUME_A3} A^3"
+            f"with unit cell volume < {MIN_VOLUME_PER_ATOM_A3} A^3 per atom"
         )
 
     potential = Potential.from_checkpoint(
