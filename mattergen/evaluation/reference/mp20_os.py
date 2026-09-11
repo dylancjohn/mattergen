@@ -36,8 +36,14 @@ def load_mp20_os_reference_dataset(mp20_os_dir: str | Path, split: str) -> Refer
     entries = []
     for i in range(len(num_atoms)):
         start, end = int(offsets[i]), int(offsets[i + 1])
+        # `pos.npy` holds *fractional* coordinates -- that is what `dataset.py` writes
+        # (`structure_infos["pos"].append(struct.frac_coords)`) and what every other reader in
+        # the codebase assumes (`CrystalDataset` applies `% 1.0`; `eval_utils.get_crystals_list`
+        # builds with `coords_are_cartesian=False`). Reading them as Cartesian collapses every
+        # reference structure into a blob near the origin, silently destroying the geometry that
+        # fingerprint- and StructureMatcher-based metrics depend on.
         structure = Structure(
-            Lattice(cell[i]), atomic_numbers[start:end], pos[start:end], coords_are_cartesian=True
+            Lattice(cell[i]), atomic_numbers[start:end], pos[start:end], coords_are_cartesian=False
         )
         entries.append(ComputedStructureEntry(structure=structure, energy=0.0))
 
