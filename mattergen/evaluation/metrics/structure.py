@@ -398,6 +398,7 @@ class AvgCompValidity(BaseStructureMetric, BaseAggregateMetric):
 
 class FracAlloyOrSingleElement(BaseStructureMetric, BaseAggregateMetric):
     aggregation_method: Literal["mean"] = "mean"
+    is_proxy_metric = True
     name = "frac_alloy_or_single_element"
     pre_aggregation_name = "is_alloy_or_single_element"
 
@@ -411,6 +412,7 @@ class FracAlloyOrSingleElement(BaseStructureMetric, BaseAggregateMetric):
 
 class AvgOxidationStateCommonality(BaseStructureMetric, BaseAggregateMetric):
     aggregation_method: Literal["mean"] = "mean"  # informational only -- `value` is overridden below
+    is_proxy_metric = True
     name = "avg_oxidation_state_commonality"
     pre_aggregation_name = "oxidation_state_commonality"
 
@@ -449,6 +451,7 @@ class AvgOxidationStateCommonality(BaseStructureMetric, BaseAggregateMetric):
 
 
 class OxidationStateDistance(BaseStructureMetric):
+    is_proxy_metric = True
     name = "oxidation_state_distance"
 
     @property

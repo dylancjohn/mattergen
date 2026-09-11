@@ -29,6 +29,7 @@ def evaluate(
     device: str = str(get_device()),
     structures_output_path: str | None = None,
     energy_correction_scheme: Compatibility = MaterialsProject2020Compatibility(),
+    compute_proxy_metrics: bool = False,
 ) -> dict[str, float | int]:
     """Evaluate the structures against a reference dataset.
 
@@ -44,6 +45,10 @@ def evaluate(
         device: Device to use for relaxation.
         structures_output_path: Path to save the relaxed structures.
         energy_correction_scheme: Energy correction scheme to use for computing energy-based metrics. Must be compatible with the reference dataset used (e.g., MP2020correction reference dataset requires MP2020 energy correction scheme).
+        compute_proxy_metrics: Also compute the CDVAE/DiffCSP-style proxy metrics (coverage,
+            Wasserstein distances, oxidation-state metrics). Off by default: they are only
+            meaningful against the MP-20 test split rather than the full reference dataset
+            used here, so they are normally computed separately on the relaxed structures.
 
     Returns:
         metrics: a dictionary of metrics and their values.
@@ -84,7 +89,8 @@ def evaluate(
         n_failed_jobs=n_failed_jobs,
         reference=reference,
         structure_matcher=structure_matcher,
-        energy_correction_scheme=energy_correction_scheme
+        energy_correction_scheme=energy_correction_scheme,
+        compute_proxy_metrics=compute_proxy_metrics,
     )
     metrics = evaluator.compute_metrics(
         metrics=evaluator.available_metrics,

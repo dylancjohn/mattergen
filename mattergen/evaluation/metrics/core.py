@@ -52,6 +52,13 @@ class BaseMetric:
 
     required_capabilities: tuple[Type[BaseMetricsCapability], ...]
 
+    # Metrics from the CDVAE/DiffCSP-style proxy suite (coverage, Wasserstein
+    # distances, oxidation-state metrics) rather than MatterGen's own. They are
+    # only meaningful against the MP-20 test split, not the full Alex-MP
+    # reference this pipeline defaults to, so they are computed separately and
+    # `MetricsEvaluator` excludes them unless explicitly asked for.
+    is_proxy_metric: bool = False
+
     @property
     def name(self) -> str:
         return "base_metric"

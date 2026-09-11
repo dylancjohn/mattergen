@@ -162,6 +162,7 @@ class DiversityMetricsCapability(BaseMetricsCapability):
 @dataclass(frozen=True)
 class BaseDiversityMetric(BaseMetric):
     required_capabilities = (DiversityMetricsCapability,)
+    is_proxy_metric = True
 
     @property
     def name(self) -> str:
