@@ -168,20 +168,6 @@ def main(
     detected_sampling_config_name = _detect_sampling_config_name(checkpoint_info.config)
     if sampling_config_name is None:
         sampling_config_name = detected_sampling_config_name or "default"
-    elif (
-        detected_sampling_config_name is not None
-        and sampling_config_name != detected_sampling_config_name
-    ):
-        logger.warning(
-            "sampling_config_name=%r was explicitly passed, but the checkpoint's own "
-            "training config indicates sampling_config_name=%r (family/constraint mode "
-            "detected from its corruption and loss targets). Proceeding with the "
-            "explicit value, but this mismatch usually means a mistake -- in particular, "
-            "sampling a constrained-trained checkpoint with an unconstrained config "
-            "silently drops the charge-neutrality guarantee.",
-            sampling_config_name,
-            detected_sampling_config_name,
-        )
 
     species_vocab = None
     if use_species_vocab:
