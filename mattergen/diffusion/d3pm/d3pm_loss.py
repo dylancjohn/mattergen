@@ -1,6 +1,12 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
+"""D3PM field loss, optionally projecting logits through a structured output layer.
+
+Moved from upstream MatterGen (MIT license), with ``logits_projection_fn`` added:
+https://github.com/microsoft/mattergen/blob/ac9ddd406171138c3f037d06b9b53fedbbb1c536/mattergen/diffusion/training/field_loss.py
+"""
+
 from typing import Callable, Literal, Optional
 
 import torch
@@ -35,9 +41,10 @@ def d3pm_loss(
     xt_zero = corruption._to_zero_based(noisy_x.long())
 
     if logits_projection_fn is not None:
-        # Project logits through the differentiable SPL layer so that both KL
-        # and CE terms see the charge-neutral distribution p_SPL(x_0 | x_t).
-        # Gradients flow back through the DP to the raw score_model_output.
+        # Project logits through the differentiable structured output layer so
+        # that both KL and CE terms see the charge-neutral distribution
+        # p(x_0 | x_t). Gradients flow back through the DP to the raw
+        # score_model_output.
         denoiser_logits = logits_projection_fn(score_model_output, xt_zero, batch_idx, batch_size)
     else:
         denoiser_logits = score_model_output

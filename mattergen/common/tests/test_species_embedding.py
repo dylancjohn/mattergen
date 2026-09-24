@@ -1,12 +1,6 @@
-"""Unit tests for SpeciesEmbedding.
-
-Verifies:
-- Output shape and dtype are correct.
-- MASK token produces a valid embedding without index errors.
-- The ``emb_size`` attribute is present (required by GemNetT).
-- Element and OS embeddings are combined via ``e_element + gamma * e_os``.
-- ``gamma`` is a learned scalar parameter, initialised to 1.0.
-- GemNetTDenoiser's fc_atom output width respects num_atom_types.
+"""Tests for ``SpeciesEmbedding``: output shapes, MASK handling, the
+species-to-element/OS lookup buffers, and the combination
+``e_element + gamma * e_os`` with learned scalar ``gamma`` initialised to 1.
 """
 
 import pytest
@@ -51,7 +45,6 @@ def test_output_shape_mask_token(emb: SpeciesEmbedding) -> None:
     species_idx = torch.tensor([_MASK_INDEX])
     h = emb(species_idx)
     assert h.shape == (1, 16)
-    # Should not raise; mask rows exist in both embedding tables.
 
 
 def test_mixed_batch(emb: SpeciesEmbedding) -> None:
@@ -69,8 +62,7 @@ def test_embedding_tables_are_summed_not_concatenated(emb: SpeciesEmbedding) -> 
 
 
 def test_same_element_different_os_differs(emb: SpeciesEmbedding) -> None:
-    # Fe²⁺ (idx=3) and Fe³⁺ (idx=4) share the same element embedding row
-    # but differ in OS embedding — so their outputs must differ.
+    # Fe²⁺ (idx=3) and Fe³⁺ (idx=4) share an element row but not an OS row.
     h_fe2 = emb(torch.tensor([3]))
     h_fe3 = emb(torch.tensor([4]))
     assert not torch.allclose(h_fe2, h_fe3)
@@ -114,10 +106,10 @@ def test_no_mask_type_variant() -> None:
 
 
 def test_fc_atom_output_width_default() -> None:
-    """GemNetTDenoiser with default num_atom_types outputs MAX_ATOMIC_NUM + 1 logits."""
+    """Element-vocabulary fc_atom width is MAX_ATOMIC_NUM + 1 logits."""
     import torch.nn as nn
 
-    # Construct only the fc_atom layer to avoid building the full GemNetT graph.
+    # A standalone layer, to avoid building the full GemNetT graph.
     hidden_dim = 32
     with_mask_type = True
     fc = nn.Linear(hidden_dim, MAX_ATOMIC_NUM + int(with_mask_type))

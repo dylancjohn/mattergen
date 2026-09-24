@@ -152,22 +152,13 @@ def structure_from_model_output(
     num_atoms,
     species_vocab: SpeciesVocab | None = None,
 ) -> list[Structure]:
-    """Convert model output tensors to pymatgen Structures.
+    """Convert batched model output to pymatgen Structures.
 
-    Parameters
-    ----------
-    frac_coords : Tensor, shape (N_atoms, 3)
-    atom_types : Tensor, shape (N_atoms,)
-        1-based atomic numbers (element model) or 1-based species vocab indices
-        (species model). If species_vocab is provided, indices are decoded to
-        pymatgen Species objects so oxidation state is preserved in the output.
-    lengths : Tensor, shape (N_crystals, 3)
-    angles : Tensor, shape (N_crystals, 3)
-    num_atoms : Tensor, shape (N_crystals,)
-    species_vocab : SpeciesVocab, optional
-        When provided, atom_types are treated as species vocab indices and converted
-        to pymatgen.core.Species objects (element + oxidation state). When None,
-        atom_types are treated as plain atomic numbers (original element model).
+    ``frac_coords`` is ``[N_atoms, 3]``, ``atom_types`` ``[N_atoms]``, ``lengths`` and
+    ``angles`` ``[N_crystals, 3]`` and ``num_atoms`` ``[N_crystals]``. ``atom_types`` are
+    1-based atomic numbers, or 1-based species-vocabulary indices when ``species_vocab`` is
+    given, in which case they are decoded to pymatgen ``Species`` so the oxidation state is
+    kept.
     """
     structures = []
     for d in get_crystals_list(
@@ -246,9 +237,8 @@ class CrystalGenerator:
 
     record_trajectories: bool = True  # store all intermediate samples by default
 
-    # When set, atom_types in model output are treated as species vocab indices and
-    # converted to pymatgen Species objects (element + oxidation state). Required for
-    # the species model; leave None for the original element model.
+    # Required for species models: decodes output atom types as species-vocabulary indices
+    # into pymatgen Species. Leave None for element models.
     species_vocab: SpeciesVocab | None = None
 
     # These attributes are set when prepare() method is called.

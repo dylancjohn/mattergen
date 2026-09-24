@@ -18,7 +18,7 @@ discrete_corruptions:
   atomic_numbers:
     _target_: mattergen.diffusion.corruption.duo_corruption.DuoCorruption
     offset: 1
-    num_classes: 100  # MAX_ATOMIC_NUM -- no MASK category for Duo's uniform-state process
+    num_classes: 100  # MAX_ATOMIC_NUM; uniform-state Duo has no MASK class
     schedule:
       _target_: mattergen.diffusion.continuous_time.schedule.LogLinearSchedule
       eps: 1e-3

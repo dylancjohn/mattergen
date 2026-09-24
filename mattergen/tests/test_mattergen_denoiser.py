@@ -273,8 +273,8 @@ def test_mask_disallowed_species(zero_based_predictions: bool):
     selected = set(SELECTED_ATOMIC_NUMBERS)
     allowed_idx = set(vocab.species_indices_for_elements(SELECTED_ATOMIC_NUMBERS))
 
-    # The broadened vocab genuinely contains species whose element is outside the
-    # generation set (e.g. Xe, U), otherwise the mask would be a no-op.
+    # The species vocabulary contains elements outside the generation set (e.g. Xe, U);
+    # otherwise the mask would be a no-op.
     assert any(
         vocab.atomic_number_of(i) not in selected for i in range(1, vocab.num_species + 1)
     )
@@ -285,9 +285,9 @@ def test_mask_disallowed_species(zero_based_predictions: bool):
         logits=example_logits, predictions_are_zero_based=zero_based_predictions
     )
 
-    # Exactly the allowed species columns survive; everything else (incl. the MASK column
-    # and all excluded-element species) is driven to ~-inf. 1-based species index k maps to
-    # column k-1 (zero-based preds) or column k (one-based preds), matching the mask logic.
+    # Only the allowed species columns survive; the MASK column and excluded-element species
+    # are set to -inf. 1-based species index k maps to column k-1 (zero-based predictions)
+    # or column k (one-based predictions).
     shift = 0 if zero_based_predictions else 1
     kept_cols = set((masked_logits[0] > -1e5).nonzero().flatten().tolist())
     assert kept_cols == {idx - 1 + shift for idx in allowed_idx}

@@ -4,6 +4,7 @@ hydra:
 
 auto_resume: true
 
+# Element vocabulary, unconstrained D3PM atom-type diffusion.
 defaults:
   - data_module: mp_20_os
   - trainer: default

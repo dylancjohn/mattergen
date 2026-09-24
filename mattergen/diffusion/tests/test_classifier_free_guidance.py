@@ -1,12 +1,7 @@
-"""test_classifier_free_guidance.py
+"""Tests for ``_combine_guided_scores`` in classifier-free guidance.
 
-Tests for ``mattergen.diffusion.sampling.classifier_free_guidance``:
-
-    * ``_combine_guided_scores`` matches plain ``torch.lerp`` away from -inf.
-    * Entries excluded (-inf) in both the conditional and unconditional score
-      stay -inf, for guidance scales other than 0/1, instead of becoming NaN.
-    * A candidate excluded in only one branch still combines normally (no
-      spurious -inf override).
+It must match ``torch.lerp`` for finite scores and when only one branch is
+-inf, and keep entries that are -inf in both branches at -inf rather than NaN.
 """
 
 from __future__ import annotations
@@ -37,8 +32,7 @@ def test_jointly_excluded_entries_stay_neginf_not_nan():
 
 
 def test_singly_excluded_entry_matches_plain_lerp():
-    """Only one branch excludes the candidate (not a joint exclusion): the
-    both-excluded override must not fire, leaving plain lerp's own value."""
+    """The both-excluded override must not fire when only one branch is -inf."""
     unconditional = torch.tensor([-5.0])
     conditional = torch.tensor([float("-inf")])
     combined = _combine_guided_scores(unconditional, conditional, 2.0)

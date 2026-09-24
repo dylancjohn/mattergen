@@ -1,3 +1,5 @@
+"""Tests for the unconstrained Duo ancestral sampling predictor."""
+
 from __future__ import annotations
 
 import torch

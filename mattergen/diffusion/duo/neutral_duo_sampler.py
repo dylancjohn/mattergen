@@ -1,11 +1,8 @@
-"""neutral_duo_sampler.py
+"""Structured (charge-neutral) sampling for continuous-time Duo.
 
-Inference-time charge-neutrality constraint for MatterGen's continuous-time
-Duo.
-
-Unlike the absorbing families, Duo's candidates are never pinned, so this
-cannot reuse D3PM/MDLM's ``NeutralSampler``: the local weight here is the
-forward-likelihood tilt, not a committed-site pin.
+Duo never pins candidates, so this cannot reuse the D3PM/MDLM
+``NeutralSampler``: the local weight is the forward-likelihood tilt rather
+than a pin on committed sites.
 """
 
 from __future__ import annotations
@@ -36,16 +33,14 @@ from mattergen.diffusion.sampling.predictors_correctors import SampleAndMean
 class NeutralDuoSampler:
     """Joint charge-neutral clean-state sampler under the forward-likelihood tilt.
 
-    Draws a single joint sample from the tilted charge-neutral clean-state
-    distribution ``omega_tilde`` via left-to-right autoregressive sampling
-    conditioned on the running charge
-    (``neutral_layer.generation.dp.neutral_sample``). Raises ``RuntimeError``
-    if no charge-neutral assignment exists.
+    Draws one joint sample from the tilted charge-neutral distribution
+    ``omega_tilde`` by left-to-right sampling conditioned on the running
+    charge (``neutral_layer.generation.dp.neutral_sample``), and raises
+    ``RuntimeError`` if no charge-neutral assignment exists.
 
-    Args:
-        charge_of: Integer charge per 0-based vocab index. Defaults to
-            :func:`build_charge_of` with the trailing MASK entry dropped
-            (Duo has no MASK class).
+    ``charge_of`` gives the integer charge per 0-based species index. It
+    defaults to :func:`build_charge_of` without the trailing MASK entry,
+    since Duo has no MASK class.
     """
 
     def __init__(self, charge_of: Optional[list[int]] = None) -> None:
@@ -73,20 +68,12 @@ class NeutralDuoSampler:
         alpha_u: Tensor,
         batch_idx: LongTensor,
     ) -> LongTensor:
-        """Sample jointly from the tilted charge-neutral distribution.
+        """Sample 0-based clean species ``[N_atoms]``, charge-neutral per crystal.
 
-        Args:
-            logits: Raw model clean-category logits, flat ``[N_atoms, K]``,
-                0-based.
-            current_state: Category to tilt towards (the current noisy
-                state), flat ``[N_atoms]``, 0-based.
-            alpha_u: Survival probability at the tilt time, per structure,
-                shape ``[B]``.
-            batch_idx: Crystal index per atom, ``[N_atoms]``.
-
-        Returns:
-            LongTensor ``[N_atoms]``: jointly sampled 0-based clean species,
-            charge-neutral by construction.
+        ``logits`` ``[N_atoms, K]`` are raw clean-category logits,
+        ``current_state`` ``[N_atoms]`` is the 0-based noisy state to tilt
+        towards, ``alpha_u`` ``[B]`` is the survival probability at the tilt
+        time and ``batch_idx`` ``[N_atoms]`` is the crystal index per atom.
         """
         if logits.ndim != 2:
             raise ValueError(f"logits must have shape [N_atoms, K], got {logits.shape}")
@@ -138,14 +125,13 @@ class NeutralDuoSampler:
 
 
 class NeutralDuoAncestralSamplingPredictor(DuoAncestralSamplingPredictor):
-    """Duo ancestral predictor that enforces charge neutrality.
+    """Duo ancestral predictor with structured (charge-neutral) sampling.
 
-    For each reverse step: (1) form tilted local weights and draw one
-    complete neutral clean assignment from ``omega_tilde`` via
-    :class:`NeutralDuoSampler`; (2) conditional on that assignment, resample
-    every site independently from the exact, unmodified uniform-state
-    posterior (:func:`mattergen.diffusion.duo.posterior.usdm_posterior`),
-    substituting a one-hot input in place of the raw softmax prediction.
+    Each reverse step (1) draws one complete charge-neutral clean assignment
+    from ``omega_tilde`` with :class:`NeutralDuoSampler`, then (2) resamples
+    every site independently from the exact uniform-state posterior
+    (:func:`mattergen.diffusion.duo.posterior.usdm_posterior`) with that
+    assignment's one-hot in place of the softmax prediction.
     """
 
     def __init__(

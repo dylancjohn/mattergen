@@ -1,6 +1,11 @@
-"""neutral_d3pm_sampler.py
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
 
-Inference-time charge-neutrality constraint for MatterGen's absorbing D3PM.
+"""Structured (charge-neutral) ancestral sampling for MatterGen's absorbing D3PM.
+
+``update_given_score`` is adapted from upstream MatterGen's
+``D3PMAncestralSamplingPredictor`` (MIT license):
+https://github.com/microsoft/mattergen/blob/ac9ddd406171138c3f037d06b9b53fedbbb1c536/mattergen/diffusion/d3pm/d3pm_predictors_correctors.py
 """
 
 from __future__ import annotations
@@ -23,14 +28,13 @@ from mattergen.diffusion.sampling.predictors_correctors import SampleAndMean
 class NeutralD3PMAncestralSamplingPredictor(D3PMAncestralSamplingPredictor):
     """Ancestral D3PM predictor that enforces charge neutrality.
 
-    Applies :class:`NeutralSampler` to the model logits (yielding a jointly
-    charge-neutral point-mass ``x_0``), then runs the same ``predict_x0`` reverse
-    step as the base predictor, so the reverse kernel is the exact structured
+    :class:`NeutralSampler` replaces the model logits with a point mass at a
+    jointly sampled charge-neutral ``x_0``; the base ``predict_x0`` reverse step
+    then follows. Marginalising over that sample gives the exact structured
     kernel ``sum_{x_0 in V} q(x_{t-1} | x_t, x_0) p̃_θ(x_0 | x_t)``.
 
-    Config-injectable exactly like the stock predictor (needs only
-    ``predict_x0: True`` and ``_partial_: true``); the ``NeutralSampler`` is built
-    internally from :func:`build_charge_of`.
+    Configured like the stock predictor (``predict_x0: True``,
+    ``_partial_: true``); charges come from :func:`build_charge_of`.
     """
 
     def __init__(
@@ -60,9 +64,8 @@ class NeutralD3PMAncestralSamplingPredictor(D3PMAncestralSamplingPredictor):
 
         assert isinstance(self.corruption, D3PMCorruption)
 
-        # Apply the charge-neutrality constraint: replace the model logits with
-        # one-hot logits of a jointly-sampled neutral x_0.  x is 1-based here;
-        # NeutralSampler handles the offset internally.
+        # One-hot logits of a jointly sampled neutral x_0. x is 1-based here;
+        # NeutralSampler handles the offset.
         class_logits = self.neutral_sampler(score, x, t, batch_idx)
 
         # sample from categorical distribution

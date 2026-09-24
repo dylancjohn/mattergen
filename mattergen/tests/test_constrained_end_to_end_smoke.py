@@ -1,36 +1,19 @@
-# Copyright (c) Microsoft Corporation.
-# Licensed under the MIT License.
+"""End-to-end smoke tests for the charge-neutral MDLM and Duo configs.
 
-"""End-to-end smoke tests for the two new structured (charge-neutral) configs,
-``species_mdlm_constrained`` and ``species_duo_constrained``.
+Covers ``species_mdlm_constrained`` and ``species_duo_constrained`` without
+the MP-20-OS dataset: each config's real GemNet model, corruption and
+structured loss are built via Hydra and driven directly with a small
+hand-built charge-neutral batch. This checks species embeddings at the right
+vocabulary size, forward corruption, the DP-backed structured loss, backprop
+through the whole model and checkpoint round-tripping.
 
-These do not use ``mattergen_main`` / a real ``DataLoader``: the MP-20-OS
-cached dataset this cluster's ``data_module: mp_20_species`` config points at
-is not present in this environment (confirmed by ``test_train_on_one_batch``
-failing identically for the pre-existing, unrelated ``default`` config with a
-missing-file error), so no config's full train pipeline can be exercised here.
-Instead, this builds each config's *real* GemNet-based model, corruption and
-constrained loss via Hydra, and drives them directly with a small
-hand-constructed but genuinely charge-neutral batch. This exercises
-everything the missing dataset would otherwise supply: real species
-embeddings at the correct vocab size, real forward corruption, the real
-constrained DP-backed loss, backprop through the whole model, and checkpoint
-round-tripping.
-
-Sampling (``PredictorCorrector.sample``) is deliberately not exercised here:
-GemNet's neighbour-graph construction (``gemnet.py::generate_interaction_graph``)
-raises on the tiny (6-8 atom) synthetic structures a from-scratch prior draw
-produces in this setup, in code that has nothing to do with atom-type
-diffusion. The same failure was confirmed to occur identically for the
-pre-existing, unconstrained ``species_mdlm`` config with the same synthetic
-conditioning batch, so it is a pre-existing GemNet/small-structure limitation,
-not a regression from this work. The reverse-step logic these configs add
-(``NeutralMDLMAncestralSamplingPredictor``/``NeutralDuoAncestralSamplingPredictor``
--- reveal probabilities, joint neutral sampling, exact neutrality) is already
-directly and thoroughly covered in ``test_neutral_mdlm_sampler.py`` /
-``test_neutral_duo_sampler.py`` using synthetic score tensors, which is the
-same call contract the PC sampler uses (``update_given_score(x=..., t=...,
-dt=..., batch_idx=..., score=..., batch=...)``) without requiring GemNet.
+Sampling is not exercised: GemNet's neighbour-graph construction raises on
+the tiny (6-8 atom) structures a prior draw gives here, independently of
+atom-type diffusion (the unconstrained ``species_mdlm`` config fails the same
+way). The reverse steps these configs add are covered by
+``test_neutral_mdlm_sampler.py`` and ``test_neutral_duo_sampler.py`` with
+synthetic scores, through the same ``update_given_score`` interface the
+predictor-corrector sampler uses.
 """
 
 from __future__ import annotations

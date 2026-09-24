@@ -1,7 +1,7 @@
 # Adapted from MDLM's `_subs_parameterization` (mdlm/diffusion.py):
 # https://github.com/kuleshov-group/mdlm, released under the Apache License,
-# Version 2.0. Adapted here to MatterGen's flat [N_atoms, K] per-atom tensor
-# convention rather than a padded [batch, length, K] sequence tensor.
+# Version 2.0. Adapted to MatterGen's flat [N_atoms, K] per-atom tensors in
+# place of padded [batch, length, K] sequences.
 
 """SUBS (substitution) reverse parameterisation for MDLM.
 
@@ -24,15 +24,10 @@ def subs_log_probs(
 ) -> torch.Tensor:
     """Return ``log p_theta(x_0 | x_t)`` under the SUBS parameterisation.
 
-    Args:
-        raw_logits: denoiser output, flat ``[N_atoms, K]``, 0-based category axis.
-        xt_zero: current noisy category per atom, flat ``[N_atoms]``, 0-based.
-        mask_index: 0-based index of the MASK category (``K - 1``).
-
-    Returns:
-        Flat ``[N_atoms, K]`` log-probabilities: an exact one-hot delta at
-        ``xt_zero`` for visible (non-mask) atoms, and the network's
-        mask-suppressed, renormalised distribution for masked atoms.
+    ``raw_logits`` is ``[N_atoms, K]`` and ``xt_zero`` is ``[N_atoms]``, both
+    0-based, with MASK at ``mask_index = K - 1``. The result is ``[N_atoms, K]``:
+    a one-hot delta at ``xt_zero`` for visible atoms, and the network's
+    renormalised distribution with MASK suppressed for masked atoms.
     """
     logits = raw_logits.clone()
     logits[:, mask_index] = logits[:, mask_index] + NEG_INFINITY

@@ -1,6 +1,13 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
+"""Base class for discrete atom-type corruptions (D3PM, MDLM, Duo).
+
+The index-offset handling is factored out of upstream MatterGen's
+``D3PMCorruption`` (MIT license):
+https://github.com/microsoft/mattergen/blob/ac9ddd406171138c3f037d06b9b53fedbbb1c536/mattergen/diffusion/corruption/d3pm_corruption.py
+"""
+
 from mattergen.diffusion.corruption.corruption import Corruption
 
 

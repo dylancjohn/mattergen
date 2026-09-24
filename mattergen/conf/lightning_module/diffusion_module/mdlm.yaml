@@ -18,11 +18,10 @@ pre_corruption_fn:
   _target_: mattergen.property_embeddings.SetEmbeddingType
   p_unconditional: 0.2
   dropout_fields_iid: false
-# Matches the reference implementation's own training-time floor
-# (mdlm/configs/config.yaml: training.sampling_eps=1e-3), rather than
-# MatterGen's D3PM-tuned default of 1e-5. Note the denoiser still conditions
-# on raw t (NoiseLevelEncoding), not on the reference's sigma = -log(alpha(t));
-# this is unchanged, shared MatterGen behaviour, not specific to this family.
+# min_t matches training.sampling_eps in the reference implementation
+# (https://github.com/kuleshov-group/mdlm) rather than MatterGen's D3PM default of 1e-5.
+# As for every family, the denoiser is conditioned on t, not on the
+# reference's sigma = -log(alpha(t)).
 timestep_sampler:
   _target_: mattergen.diffusion.timestep_samplers.UniformTimestepSampler
   min_t: 1e-3

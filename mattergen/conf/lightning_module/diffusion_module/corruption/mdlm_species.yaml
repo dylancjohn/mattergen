@@ -1,7 +1,6 @@
-# MDLM corruption for the species vocabulary.
-#
-# num_classes = num_species + 1 is resolved at runtime via the species_vocab_size
-# OmegaConf resolver (registered in mattergen.common.data.species_resolvers).
+# MDLM corruption over the species vocabulary. num_classes = num_species + 1,
+# including MASK, from the species_vocab_size resolver
+# (mattergen.common.data.species_resolvers).
 _target_: mattergen.diffusion.corruption.multi_corruption.MultiCorruption
 sdes:
   pos:

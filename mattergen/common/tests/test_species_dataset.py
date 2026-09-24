@@ -1,19 +1,8 @@
-"""test_species_dataset.py
+"""Tests for ``SpeciesCrystalDataset``.
 
-Unit tests for mattergen/common/data/species_dataset.py.
-
-Tests cover:
-    - Loading a dataset from fake .npy files via from_cache_path.
-    - __getitem__ returns species indices in the correct range.
-    - Atom count consistency between atomic_numbers shape and num_atoms.
-    - Species correctness: decoded (z, os) matches original npy values.
-    - subset produces a correctly sized dataset with matching indices.
-    - FileNotFoundError raised for missing .npy files.
-    - Each of the 6 validation rules raises
-      neutral_layer.data.filtering.DatasetValidationError with the
-      corresponding ViolationCode (including ALLOY_NONZERO_OS/UNKNOWN_SPECIES,
-      the two mattergen-specific rules) rather than silently dropping the
-      offending structure.
+Covers loading from ``.npy`` files, species-index decoding, ``subset``, and
+each of the six validation rules raising ``DatasetValidationError`` with its
+``ViolationCode`` instead of dropping the structure.
 """
 
 from pathlib import Path
@@ -27,7 +16,7 @@ from neutral_layer.data.filtering import DatasetValidationError, ViolationCode
 from neutral_layer.data.vocab import SpeciesVocab
 
 # Synthetic vocab: (8,-2)->1, (26,0)->2, (26,2)->3, (26,3)->4, (28,0)->5, mask->6
-# Includes Fe and Ni at OS=0 to enable two-element metallic alloy tests.
+# Fe and Ni at OS=0 allow a two-element metallic alloy test.
 _VOCAB = SpeciesVocab(
     species_list=((8, -2), (26, 0), (26, 2), (26, 3), (28, 0))
 )
@@ -173,7 +162,6 @@ class TestSpeciesDecodingRoundTrip:
 
 class TestNeutralityFilter:
     def test_non_neutral_structure_raises(self, tmp_path: Path):
-        """Structures with non-zero total OS must raise CHARGE_NON_NEUTRAL."""
         # Structure 0: (8,-2) + (26,2) = 0  (neutral)
         # Structure 1: (8,-2) + (26,3) = +1 (non-neutral)
         _write_npy_files(tmp_path, [8, 26, 8, 26], [-2, 2, -2, 3], [2, 2])
@@ -182,13 +170,11 @@ class TestNeutralityFilter:
         assert exc_info.value.violation is ViolationCode.CHARGE_NON_NEUTRAL
 
     def test_all_neutral_does_not_raise(self, tmp_path: Path):
-        """When all structures are neutral, loading succeeds."""
         _write_npy_files(tmp_path, [8, 26, 8, 26], [-2, 2, -2, 2], [2, 2])
         ds = SpeciesCrystalDataset.from_cache_path(tmp_path, _VOCAB)
         assert len(ds) == 2
 
     def test_all_non_neutral_raises(self, tmp_path: Path):
-        """When every structure is non-neutral, loading raises."""
         _write_npy_files(tmp_path, [8, 26], [-2, 3], [2])
         with pytest.raises(DatasetValidationError) as exc_info:
             SpeciesCrystalDataset.from_cache_path(tmp_path, _VOCAB)
@@ -197,7 +183,6 @@ class TestNeutralityFilter:
 
 class TestMaxAtomsFilter:
     def test_oversized_structure_raises(self, tmp_path: Path):
-        """Structures with more atoms than max_atoms must raise MAX_ATOMS."""
         # 10-atom structure, threshold = 4
         _write_npy_files(tmp_path, [8, 26] * 5, [-2, 2] * 5, [10])
         with pytest.raises(DatasetValidationError) as exc_info:
@@ -205,7 +190,6 @@ class TestMaxAtomsFilter:
         assert exc_info.value.violation is ViolationCode.MAX_ATOMS
 
     def test_at_limit_does_not_raise(self, tmp_path: Path):
-        """Structures exactly at max_atoms must not raise."""
         _write_npy_files(tmp_path, [8, 26, 8, 26], [-2, 2, -2, 2], [4])
         ds = SpeciesCrystalDataset.from_cache_path(tmp_path, _VOCAB, max_atoms=4)
         assert len(ds) == 1
@@ -228,7 +212,6 @@ class TestAlloyFilter:
         assert len(ds) == 1
 
     def test_metallic_nonzero_os_raises(self, tmp_path: Path):
-        """Pure-metal structure with non-zero OS must raise ALLOY_NONZERO_OS."""
         _write_npy_files(tmp_path, [26, 26], [2, -2], [2])
         with pytest.raises(DatasetValidationError) as exc_info:
             SpeciesCrystalDataset.from_cache_path(tmp_path, _VOCAB)
@@ -242,18 +225,23 @@ class TestAlloyFilter:
 
 
 class TestSingleSpeciesFilter:
-    def test_single_element_raises(self, tmp_path: Path):
-        """Structures containing only one distinct element must raise SINGLE_SPECIES."""
-        # Use (26, 0) x 2: single metal species, total charge = 0, so the
-        # alloy check passes (all metal, all OS=0) and the single-species
-        # check fires in isolation.
-        _write_npy_files(tmp_path, [26, 26], [0, 0], [2])
+    def test_single_non_metal_raises(self, tmp_path: Path):
+        """A structure of one non-metal element must raise SINGLE_SPECIES."""
+        # O(0) x 2 is neutral and in the local vocab, so only the single-species
+        # check can fire.
+        local_vocab = SpeciesVocab(species_list=((8, 0),))
+        _write_npy_files(tmp_path, [8, 8], [0, 0], [2])
         with pytest.raises(DatasetValidationError) as exc_info:
-            SpeciesCrystalDataset.from_cache_path(tmp_path, _VOCAB)
+            SpeciesCrystalDataset.from_cache_path(tmp_path, local_vocab)
         assert exc_info.value.violation is ViolationCode.SINGLE_SPECIES
 
+    def test_pure_metal_does_not_raise(self, tmp_path: Path):
+        """A single-element metal with OS=0 is a valid record."""
+        _write_npy_files(tmp_path, [26, 26], [0, 0], [2])
+        ds = SpeciesCrystalDataset.from_cache_path(tmp_path, _VOCAB)
+        assert len(ds) == 1
+
     def test_two_element_compound_does_not_raise(self, tmp_path: Path):
-        """Structures with at least two distinct elements must survive."""
         _write_npy_files(tmp_path, [8, 26], [-2, 2], [2])
         ds = SpeciesCrystalDataset.from_cache_path(tmp_path, _VOCAB)
         assert len(ds) == 1
@@ -262,9 +250,9 @@ class TestSingleSpeciesFilter:
 class TestMVFilter:
     def test_non_mv_element_two_os_raises(self, tmp_path: Path):
         """Structure where a non-MV element (O) carries two distinct OS values must raise."""
-        # O appears as -2 and -1; O is not in MIXED_VALENCE_ELEMENTS. Use a local
-        # vocab that includes (8, -1) so the unknown-species check (rule 4, which
-        # now always raises) doesn't intercept this before the MV check (rule 6).
+        # O appears as -2 and -1; O is not in MIXED_VALENCE_ELEMENTS. The local
+        # vocab includes (8, -1) so the unknown-species check (rule 4) doesn't
+        # fire before the MV check (rule 6).
         local_vocab = SpeciesVocab(species_list=((8, -2), (8, -1), (26, 3)))
         # Charge: -2 + -1 + 3 = 0
         _write_npy_files(tmp_path, [8, 8, 26], [-2, -1, 3], [3])

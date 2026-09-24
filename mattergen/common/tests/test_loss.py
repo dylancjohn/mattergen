@@ -1,5 +1,5 @@
-"""Tests for mattergen.common.loss.MaterialsLoss's loss-selection mechanism,
-including backward compatibility with pre-reorganisation saved configs."""
+"""Tests for how ``MaterialsLoss`` selects the atomic_numbers loss, including
+the deprecated ``d3pm_hybrid_lambda`` kwarg used by older saved configs."""
 
 from __future__ import annotations
 
@@ -12,8 +12,7 @@ from mattergen.diffusion.d3pm.d3pm_loss import d3pm_loss
 
 
 def test_deprecated_d3pm_hybrid_lambda_still_constructs_default_d3pm_loss():
-    """Older saved configs (e.g. shipped pretrained checkpoints) construct
-    MaterialsLoss with a bare d3pm_hybrid_lambda kwarg; this must keep working."""
+    """Shipped pretrained checkpoints pass a bare ``d3pm_hybrid_lambda``."""
     loss = MaterialsLoss(d3pm_hybrid_lambda=0.01, include_atomic_numbers=True)
     atom_fn = loss.loss_fns["atomic_numbers"]
     assert isinstance(atom_fn, functools.partial)

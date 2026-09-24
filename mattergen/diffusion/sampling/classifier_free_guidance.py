@@ -24,9 +24,9 @@ def _combine_guided_scores(
     """Linearly combine scores, without turning a jointly-excluded (-inf) entry into NaN.
 
     ``torch.lerp(-inf, -inf, w)`` is NaN for any `w` (the (end - start) term is
-    -inf - -inf), which happens whenever a hard allow-list masks the same logit
-    to -inf in both the conditional and unconditional branches (mask_logits now
-    uses exact -inf). Entries excluded in both branches must stay excluded.
+    -inf - -inf). This arises whenever a hard allow-list (e.g. ``mask_logits``)
+    sets the same logit to -inf in both the conditional and unconditional
+    branches. Entries excluded in both branches must stay excluded.
     """
     combined = torch.lerp(unconditional_score, conditional_score, guidance_scale)
     both_excluded = torch.isneginf(unconditional_score) & torch.isneginf(conditional_score)

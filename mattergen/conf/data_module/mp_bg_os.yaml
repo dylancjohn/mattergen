@@ -4,12 +4,12 @@ defaults:
 properties:
   - dft_band_gap
 
-# Drop structures missing band gap from each batch.
+# Drop structures missing a band gap from each split.
 dataset_transforms:
   - _partial_: true
     _target_: mattergen.common.data.dataset_transform.filter_sparse_properties
 
-# mp-20-os ships dft_band_gap in all splits; override env var to redirect if needed.
+# mp-20-os ships dft_band_gap in all splits. Override with MP_20_OS_DATA_DIR.
 root_dir: ${oc.env:MP_20_OS_DATA_DIR,${oc.env:PROJECT_ROOT}/../datasets/mp-20-os}
 
 batch_size:

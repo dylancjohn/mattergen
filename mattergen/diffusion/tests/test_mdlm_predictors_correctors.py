@@ -1,3 +1,5 @@
+"""Tests for the unconstrained MDLM ancestral sampling predictor."""
+
 from __future__ import annotations
 
 import torch
@@ -88,8 +90,8 @@ def test_revealed_sites_never_resample_to_mask():
     x_next, _ = predictor.update_given_score(
         x=x, t=t, dt=dt, batch_idx=batch_idx, score=score, batch=None
     )
-    # "Revealed" = changed from the original (all-MASK) state -- an independent
-    # signal from x_next's own value, so this isn't circular.
+    # Revealed sites are identified by comparison with the all-MASK input,
+    # independently of the value they were revealed to.
     changed = x_next != x
     assert changed.any(), "test setup should reveal at least some sites"
     x_next_zero = corruption._to_zero_based(x_next)

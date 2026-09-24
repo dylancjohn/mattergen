@@ -1,11 +1,9 @@
-"""candidate_pinning.py
+"""Candidate pinning for absorbing-mask structured losses and samplers.
 
-Shared absorbing-mask candidate pinning for charge-neutral constrained losses
-and samplers.  Committed sites collapse to a one-hot logit at their known
-value; the MASK column and padding are always excluded.  D3PM's and MDLM's
-constrained code both use this convention, since both are absorbing-mask
-processes; Duo's is not (its candidates are never pinned), so it does not use
-this module.
+Committed sites collapse to a one-hot logit at their known value; the MASK
+column and padding are always excluded. Used by D3PM and MDLM, which are both
+absorbing-mask processes. Duo is uniform-state, so its sites are never
+committed and it does not use this module.
 """
 
 from __future__ import annotations
@@ -27,26 +25,14 @@ def pin_committed_candidates(
 ) -> FloatTensor:
     """Collapse committed sites to one-hot; exclude MASK and padding.
 
-    Committed sites (``xt_pad != mask_idx``) are pinned to a one-hot logit at
-    their value in ``xt_pad``; the MASK column and padding are set to
-    ``-inf``; other real sites keep their raw ``logits_pad`` so gradients
-    flow only there.
-
-    Args:
-        logits_pad: Per-site log-scores, shape ``[B, N, K]``.
-        xt_pad: Per-site index tensor, shape ``[B, N]``, used both to decide
-            which sites are committed (``xt_pad != mask_idx``) and the value
-            to pin them to. Padding positions should already be filled with
-            ``mask_idx`` by the caller.
-        attention_mask: ``True`` at real (non-padding) sites, shape ``[B, N]``.
-        mask_idx: Index of the MASK class within ``K``; always excluded from
-            the result.
-        candidate_mask: Optional boolean mask, shape ``[B, N, K]``. At
-            non-committed real sites, ``False`` entries are excluded
-            (``-inf``) on top of the pinning above.
-
-    Returns:
-        Pinned logits, shape ``[B, N, K]``.
+    ``logits_pad`` ``[B, N, K]`` holds per-site log-scores and ``xt_pad``
+    ``[B, N]`` the 0-based noisy indices, with padding already filled with
+    ``mask_idx`` by the caller. Committed sites (``xt_pad != mask_idx``) become
+    one-hot at their ``xt_pad`` value; the MASK column and padding (where
+    ``attention_mask`` is ``False``) become ``-inf``. Other real sites keep
+    their raw logits, so gradients flow only there. At those sites, ``False``
+    entries of the optional ``candidate_mask`` ``[B, N, K]`` are also set to
+    ``-inf``. Returns pinned logits ``[B, N, K]``.
     """
     K = logits_pad.shape[-1]
     device = logits_pad.device

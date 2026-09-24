@@ -1,17 +1,14 @@
-"""test_neutral_duo_loss.py
+"""Tests for the structured Duo loss in ``mattergen.diffusion.duo.neutral_duo_loss``.
 
-Tests for the structured charge-neutral training loss in
-``mattergen.diffusion.duo.neutral_duo_loss``:
-
-    * gradcheck w.r.t. the raw logits.
-    * A neutral clean state gives a finite loss at every t, including near
-      the production min_t=1e-3 floor (the A_t/R_t -> inf numerical caution).
-    * The marginal-shortcut rate ratio v_{i,b} matches a from-scratch
-      brute-force enumeration of the singly-modified tilted partition ratio.
-    * constraint-off (every candidate charge zero) reduces to plain duo_loss.
-    * Invalid targets / partitions / vocabularies fail loudly.
-    * make_neutral_duo_loss wires the constrained loss into MaterialsLoss's
-      injectable atomic_numbers_loss_partial, with the MASK entry dropped.
+    * Gradcheck with respect to the raw logits.
+    * Finite loss and gradients across t, including the min_t=1e-3 floor
+      where A_t/R_t -> inf.
+    * The marginal-shortcut rate ratio v_{i,b} matches brute-force
+      enumeration of the singly-modified tilted partition ratio.
+    * With every charge zero the loss reduces to plain ``duo_loss``.
+    * Invalid targets, partitions and vocabularies fail loudly.
+    * ``make_neutral_duo_loss`` plugs into ``MaterialsLoss`` with the MASK
+      entry dropped.
 """
 
 from __future__ import annotations
@@ -95,7 +92,7 @@ def test_neutral_clean_state_is_feasible():
 
 def test_finite_and_gradient_finite_near_min_t_floor():
     """The A_t/R_t -> inf singularity as t -> 0 must stay controlled at the
-    actual production floor (min_t=1e-3, LogLinearSchedule)."""
+    training floor (min_t=1e-3, LogLinearSchedule)."""
     score, x, noisy_x, batch_idx = _batch(dtype=torch.float64, seed=13)
     score.requires_grad_(True)
     t = torch.full((2,), 1e-3, dtype=torch.float64)
@@ -107,14 +104,10 @@ def test_finite_and_gradient_finite_near_min_t_floor():
 
 
 def test_v_stays_finite_at_production_scale_float32_min_t():
-    """Random logits at K=428/float32/t=min_t never pushed v negative, but
-    confident (peaked) predictions do -- the realistic case for a partially
-    trained model. v is analytically >= R_t/(A_t+R_t) > 0, but confirmed
-    empirically to go slightly negative here from float32 rounding before the
-    non-negative-mixture reformulation; this pins that regression at the
-    actual production scale, and cross-checks both loss value and gradient
-    against the same computation done in float64 (a higher-precision
-    reference the original cancellation-prone form could not agree with)."""
+    """Peaked predictions at K=428, float32 and t=min_t, the regime where the
+    cancellation-prone form of v goes slightly negative from rounding even
+    though v >= R_t/(A_t+R_t) > 0 analytically (random logits do not trigger
+    it). Loss and gradient are checked against a float64 reference."""
     K = 428
     charge_of = [(-1) ** i for i in range(K)]  # alternating -1/+1; (0,1) is a neutral pair
     corruption = DuoCorruption(schedule=LogLinearSchedule(), num_classes=K, offset=1)
@@ -158,9 +151,8 @@ def test_v_stays_finite_at_production_scale_float32_min_t():
 
 
 def test_hard_excluded_candidate_gets_zero_tilted_marginal():
-    """A candidate excluded via true -inf (as mask_disallowed_species now
-    produces) must get exactly zero probability in the tilted marginals, not
-    just a small one -- exact support, not just low likelihood."""
+    """A candidate excluded with a true -inf logit (as produced by
+    mask_disallowed_species) must get exactly zero tilted marginal."""
     from neutral_layer.generation.dp import compute_q_max, neutral_marginals_diff
 
     from mattergen.diffusion.duo.neutral_duo_tilt import build_tilted_local_weights

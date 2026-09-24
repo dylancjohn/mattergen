@@ -1,14 +1,9 @@
-# Copyright (c) Microsoft Corporation.
-# Licensed under the MIT License.
+"""Tests for detecting species-vocabulary checkpoints in ``generate.py``.
 
-"""test_generate_species_vocab_detection.py
-
-Tests for generate.py's checkpoint-driven species-vocab auto-detection: the
-config's data_module._target_ must reliably distinguish species-vocab
-checkpoints (SpeciesDataModule) from element-vocab ones (CrystDataModule),
-since generate.main() uses exactly this signal to decide which allow-list
-masking function and vocab decoder to install, rather than trusting a
-caller-supplied flag that could silently mis-decode a forgotten case.
+``data_module._target_`` must distinguish species-vocabulary checkpoints
+(``SpeciesDataModule``) from element-vocabulary ones (``CrystDataModule``):
+``generate.main()`` uses it, rather than a caller-supplied flag, to choose the
+allow-list masking function and vocabulary decoder.
 """
 
 import os

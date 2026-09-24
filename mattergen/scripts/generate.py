@@ -42,12 +42,12 @@ _SAMPLING_CONFIG_NAME_BY_FAMILY_AND_CONSTRAINT = {
 
 
 def _detect_sampling_config_name(cfg) -> str | None:
-    """Infer the sampling_conf entrypoint matching this checkpoint's trained
-    atom-type family and constraint mode, from its own saved training config.
+    """Infer the ``sampling_conf`` entrypoint from a checkpoint's training config.
 
-    Returns None if the corruption/loss targets aren't recognised (e.g.
-    non-atom-type-diffusion setups like CSP), so callers can fall back to
-    prior behaviour rather than guessing.
+    The diffusion family comes from the atom-type corruption target and the
+    constraint mode from the atom-type loss target. Returns None if either is
+    unrecognised (e.g. CSP), so the caller falls back to "default" rather
+    than guessing.
     """
     corruption_target = OmegaConf.select(
         cfg,
@@ -102,7 +102,7 @@ def main(
         target_compositions: List of dictionaries with target compositions to condition on. Each dictionary should have the form `{element: number_of_atoms}`. If None, the target compositions are not conditioned on.
            Only supported for models trained for crystal structure prediction (CSP) (default: None)
         progress_callback: Optional callback function that takes in a single float argument representing the progress of the generation process (between 0 and 1).
-        use_species_vocab: When True, decode generated atom types as species vocab indices (element + oxidation state) rather than plain atomic numbers. Defaults to None, which auto-detects from the checkpoint's own saved data_module config. Pass explicitly to override detection.
+        use_species_vocab: When True, decode generated atom types as species-vocabulary indices (element, oxidation state) rather than atomic numbers. Defaults to None, which auto-detects from the checkpoint's saved data_module config. Pass explicitly to override detection.
     NOTE: When specifying dictionary values via the CLI, make sure there is no whitespace between the key and value, e.g., `--properties_to_condition_on={key1:value1}`.
     """
     assert (
@@ -132,9 +132,9 @@ def main(
             strict_checkpoint_loading=strict_checkpoint_loading,
         )
 
-    # Auto-detect whether this checkpoint was trained with the species vocabulary
-    # (element + oxidation state) from its own saved data_module config, rather than
-    # trusting a caller-supplied flag that could silently install the wrong allow-list.
+    # Detect the species vocabulary from the checkpoint's saved data_module config
+    # rather than trusting a caller-supplied flag, which could silently install the
+    # wrong allow-list and decoder.
     detected_species_vocab = (
         OmegaConf.select(checkpoint_info.config, "data_module._target_", default=None)
         == _SPECIES_DATAMODULE_TARGET
@@ -151,9 +151,8 @@ def main(
         )
 
     # Disable generating element types which are not supported or not in the desired chemical
-    # system (if provided). mask_disallowed_elements operates over the element vocab; species
-    # models use mask_disallowed_species instead, which applies the same SELECTED_ATOMIC_NUMBERS
-    # allow-list over species indices (derived from the vocabulary at runtime).
+    # system (if provided). Species models use mask_disallowed_species, which applies the same
+    # SELECTED_ATOMIC_NUMBERS allow-list over species-vocabulary indices.
     if not use_species_vocab:
         checkpoint_info.config_overrides.append(
             "++lightning_module.diffusion_module.model.element_mask_func={_target_:'mattergen.denoiser.mask_disallowed_elements',_partial_:True}"
@@ -164,7 +163,8 @@ def main(
         )
     _sampling_config_path = Path(sampling_config_path) if sampling_config_path is not None else None
 
-    # Auto-detect the sampling_conf entrypoint matching this checkpoint
+    # Constrained and unconstrained variants share a corruption class, so predictor
+    # is_compatible() checks cannot catch a constraint-mode mismatch.
     detected_sampling_config_name = _detect_sampling_config_name(checkpoint_info.config)
     if sampling_config_name is None:
         sampling_config_name = detected_sampling_config_name or "default"

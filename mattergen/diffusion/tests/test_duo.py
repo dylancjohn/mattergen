@@ -1,10 +1,9 @@
-"""Tests for the unconstrained Duo atom-type diffusion family.
+"""Tests for unconstrained Duo atom-type diffusion.
 
-Mirrors the structure of test_d3pm.py: forward-process invariants, posterior
-correctness, and an end-to-end loss sanity check. Crucially, cross-checks the
-closed-form Rao-Blackwellised f_Duo NELBO (duo_loss._duo_rate_nll) against a
-naive, literal double-sum over the explicit reverse-rate generalised-KL
-objective -- the primary correctness oracle for the algebraically-fused port.
+Covers forward-process invariants, the USDM posterior and the loss. The main
+correctness oracle compares the closed-form Rao-Blackwellised f_Duo NELBO
+(``duo_loss._duo_rate_nll``) with a literal sum over the explicit
+reverse-rate generalised-KL objective.
 """
 
 from __future__ import annotations

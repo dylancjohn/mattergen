@@ -1,16 +1,8 @@
-"""test_neutral_d3pm_loss.py
+"""Tests for the structured absorbing-D3PM loss (``neutral_d3pm_loss``).
 
-Tests for the structured charge-neutral training loss in
-``mattergen.diffusion.d3pm.neutral_d3pm_loss``:
-
-    * CE term (vb_weight=0): gradcheck w.r.t. the raw logits.
-    * At t==0 the VB term reveals every site, so L_vb == L_ce (value + gradcheck).
-    * Weight 0 short-circuits (returns zeros).
-    * A neutral clean state gives a finite loss (feasible every step).
-    * Intermediate-time gradients match exhaustive transition-weighted enumeration.
-    * Invalid targets, partitions, vocabularies and MC configuration fail loudly.
-    * make_neutral_d3pm_loss wires the constrained loss into MaterialsLoss's
-      injectable atomic_numbers_loss_partial.
+Covers CE and VB gradchecks, VB == CE at the reconstruction time, the
+intermediate-time gradient against exhaustive enumeration, loud failures on
+invalid inputs, and wiring into ``MaterialsLoss`` and the Hydra config.
 """
 
 from __future__ import annotations
@@ -183,7 +175,10 @@ def test_t0_hybrid_ce_matches_base_mattergen_convention():
 
 
 def test_intermediate_reverse_gradient_matches_full_enumeration():
-    """The absorbing support-only numerator has the exact structured gradient."""
+    """The absorbing support-only numerator has the exact structured gradient.
+
+    Its value differs from the full reverse NLL by a θ-independent constant.
+    """
     charges = CHARGE_OF
     mask_idx = MASK_IDX
     charge_tensor = torch.tensor(charges, dtype=torch.long)

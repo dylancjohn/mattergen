@@ -144,11 +144,10 @@ def mask_disallowed_elements(
 def _selected_species_keep_mask(
     num_classes: int, predictions_are_zero_based: bool
 ) -> torch.Tensor:
-    """k-hot keep-mask ``(1, num_classes)`` for species whose element is in ``SELECTED_ATOMIC_NUMBERS``.
+    """k-hot keep-mask ``[1, num_classes]`` for species whose element is in ``SELECTED_ATOMIC_NUMBERS``.
 
-    Derived from the current species vocabulary at runtime -- species indices are not frozen,
-    so the allow-list cannot be hardcoded. Static across sampling steps, hence cached (on CPU;
-    callers move it to the logits' device).
+    Built from the species vocabulary, since species indices depend on it. Cached on CPU;
+    callers move it to the logits' device.
     """
     vocab = build_species_vocab()
     allowed_species_indices = torch.tensor(
@@ -168,22 +167,13 @@ def mask_disallowed_species(
     batch_idx: torch.LongTensor | None = None,
     predictions_are_zero_based: bool = True,
 ) -> torch.FloatTensor:
-    """Species analog of :func:`mask_disallowed_elements`.
+    """Species analogue of :func:`mask_disallowed_elements`.
 
-    Restricts generation to species whose parent element is in ``SELECTED_ATOMIC_NUMBERS`` by
-    setting all other species logits to ~-inf. Because species indices are not frozen, the
-    allow-list is derived from the current species vocabulary at runtime rather than hardcoded.
-
-    Unlike the element version, this applies the global allow-list only -- there is no
-    per-crystal chemical-system conditioning branch for species models.
-
-    Args:
-        logits (torch.FloatTensor): Logits of shape (num_atoms, num_classes) over species
-            indices (plus a trailing MASK column when using mask diffusion).
-        x (ChemGraph, optional): Unused; accepted for ``element_mask_func`` signature compatibility.
-        batch_idx (torch.LongTensor, optional): Unused; accepted for signature compatibility.
-        predictions_are_zero_based (bool, optional): Whether the logits are zero-based. Defaults
-            to True (D3PM predicts a zero-based species index).
+    Sets to -inf the logits of species whose element is not in ``SELECTED_ATOMIC_NUMBERS``.
+    ``logits`` has shape ``[N_atoms, num_classes]`` over species-vocabulary indices, plus a
+    trailing MASK column for masked diffusion, which is also set to -inf. Only the global
+    allow-list is applied: there is no chemical-system conditioning for species models, so
+    ``x`` and ``batch_idx`` are unused and kept for ``element_mask_func`` compatibility.
     """
     keep_mask = _selected_species_keep_mask(
         logits.shape[1], predictions_are_zero_based

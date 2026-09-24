@@ -55,22 +55,14 @@ class SpeciesEmbedding(torch.nn.Module):
     """Node embeddings for (element, oxidation state) species pairs.
 
     ``h = e_element + gamma * e_os``, where ``gamma`` is a learned scalar
-    initialised to 1.0. Element and OS have separate embedding tables so the
-    model shares structure across species with the same element or the same
-    oxidation state.
+    initialised to 1. Separate element and OS tables let species that share an
+    element or an oxidation state share parameters.
 
-    Parameters
-    ----------
-    emb_size : int
-        Embedding dimension; must match ``GemNetT.emb_size_atom``.
-    with_mask_type : bool
-        Whether to include a learnable MASK-token row in each embedding table.
-    species_list : tuple[tuple[int, int], ...] or None
-        Ordered ``(atomic_number, oxidation_state)`` pairs, matching the
-        ordering in ``SpeciesVocab.species_list`` (1-based indexing).
-        When ``None`` (the default), the default vocab is built via
-        ``build_species_vocab()``, making this class fully Hydra-instantiable
-        without an explicit species list in the config.
+    ``emb_size`` must match ``GemNetT.emb_size_atom``. ``with_mask_type`` adds a
+    MASK row to each table. ``species_list`` holds the ``(atomic_number,
+    oxidation_state)`` pairs in ``SpeciesVocab.species_list`` order (species
+    index ``i`` is entry ``i - 1``); if None, the default vocabulary is built,
+    so the class is Hydra-instantiable without a species list in the config.
     """
 
     def __init__(
@@ -115,17 +107,7 @@ class SpeciesEmbedding(torch.nn.Module):
         self.register_buffer("species_to_os_idx", os_buf)
 
     def forward(self, species_idx: torch.Tensor) -> torch.Tensor:
-        """Embed species indices.
-
-        Parameters
-        ----------
-        species_idx : torch.Tensor
-            1-based species indices, shape ``(N_atoms,)``.
-
-        Returns
-        -------
-        h : torch.Tensor, shape ``(N_atoms, emb_size)``
-        """
+        """Embed 1-based species indices ``[N_atoms]`` to ``[N_atoms, emb_size]``."""
         z_idx = self.species_to_z_idx[species_idx]
         os_idx = self.species_to_os_idx[species_idx]
         return self.element_embedding(z_idx) + self.gamma * self.os_embedding(os_idx)

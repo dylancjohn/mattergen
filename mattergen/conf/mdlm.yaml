@@ -4,8 +4,7 @@ hydra:
 
 auto_resume: True
 
-# MatterGen with the element-only vocabulary and unconstrained MDLM atom-type
-# diffusion, mirroring default.yaml (D3PM) with only the diffusion family swapped.
+# Element vocabulary, unconstrained MDLM atom-type diffusion.
 defaults:
   - data_module: mp_20_os
   - trainer: default

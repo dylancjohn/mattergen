@@ -1,15 +1,11 @@
-"""neutral_duo_tilt.py
+"""Forward-likelihood-tilted local weights for constrained Duo.
 
-Forward-likelihood-tilted local weights for constrained Duo.
-
-Duo's candidates are never pinned (every category remains an eligible clean
-prediction at every site, unlike the absorbing families' visible/masked
-split), so this does not build on
-:mod:`mattergen.diffusion.corruption.candidate_pinning`. Parameterised
-generically by ``(u, current_state)`` rather than hard-coded to ``(t, s_t)``,
-so the same helper covers both the training-time tilt (used by
-:mod:`neutral_duo_loss`) and the sampling-time tilt (used by
-:mod:`neutral_duo_sampler`).
+Duo never pins candidates: every category stays an eligible clean prediction
+at every site, unlike the visible/masked split of D3PM and MDLM, so this does
+not build on :mod:`mattergen.diffusion.corruption.candidate_pinning`. The
+helper takes a generic ``(u, current_state)`` rather than ``(t, s_t)`` so it
+serves both the structured loss (:mod:`neutral_duo_loss`) and structured
+sampling (:mod:`neutral_duo_sampler`).
 """
 
 from __future__ import annotations
@@ -28,17 +24,11 @@ def build_tilted_local_weights(
     ``g_u(y | a) = alpha_u * 1[y=a] + (1 - alpha_u) / K`` is the uniform-state
     forward likelihood.
 
-    Does not exclude padding positions; callers apply that separately.
-
-    Args:
-        logits: Per-site clean-category log-scores, shape ``[B, N, K]``.
-        current_state: Category observed at time ``u`` to tilt towards, shape
-            ``[B, N]``, 0-based. Padding positions may hold any valid index.
-        alpha_u: Survival probability at time ``u``, shape ``[B]``.
-        num_classes: ``K``, the size of the uniform-state category space.
-
-    Returns:
-        Log-weights, shape ``[B, N, K]``.
+    ``logits`` ``[B, N, K]`` are clean-category log-scores, ``current_state``
+    ``[B, N]`` is the 0-based category observed at time ``u`` and ``alpha_u``
+    ``[B]`` is the survival probability at ``u``. Returns ``[B, N, K]``
+    log-weights. Padding is not excluded; callers mask it separately, and
+    padding positions may hold any valid index.
     """
     K = num_classes
     alpha_u_ = alpha_u.view(-1, 1, 1)  # [B, 1, 1]

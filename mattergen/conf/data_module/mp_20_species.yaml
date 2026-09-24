@@ -1,13 +1,13 @@
 _target_: mattergen.common.data.species_datamodule.SpeciesDataModule
 
-# average_density is not used by SpeciesDataModule at runtime; it is referenced
-# by the corruption config via ${data_module.average_density}. mp-20-os structures
-# have the same density distribution as mp-20, so we reuse that value.
+# Unused by SpeciesDataModule; the corruption config interpolates
+# ${data_module.average_density}. mp-20-os has the same density distribution
+# as mp-20, so its value is reused.
 average_density: 0.05771451654022283  # atoms/Angstrom**3
 
 max_epochs: 900
 
-# Override via env var SPECIES_DATA_DIR if the dataset lives elsewhere.
+# Override with the SPECIES_DATA_DIR env var.
 data_dir: ${oc.env:SPECIES_DATA_DIR,${oc.env:PROJECT_ROOT}/../datasets/mp-20-os}
 
 num_workers:

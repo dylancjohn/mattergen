@@ -1,14 +1,8 @@
-"""Tests for mattergen.diffusion.continuous_time.schedule.
+"""Tests for the continuous-time schedules shared by MDLM and Duo.
 
-Covers, for every Schedule subclass:
-    * alpha(0) ~= 1 and alpha(1) is small (bounded away from the exact
-      endpoints rather than reaching them; see schedule.py's module docstring
-      for which endpoint each schedule's eps/sigma_min/sigma_max controls).
-    * alpha is strictly decreasing on [0, 1].
-    * dalpha_dt matches a central finite-difference estimate of alpha.
-    * alpha_ratio(t, r) == alpha(t) / alpha(r).
-    * evaluating at the exact endpoints t=0, t=1 produces finite values
-      (no NaN/Inf), including for dalpha_dt.
+For every ``Schedule`` subclass: endpoint values, strict monotonicity,
+``dalpha_dt`` against finite differences, ``alpha_ratio``, and finite values
+at t=0 and t=1.
 """
 
 from __future__ import annotations
@@ -36,10 +30,8 @@ SCHEDULES: list[Schedule] = [
 
 @pytest.mark.parametrize("schedule", SCHEDULES, ids=lambda s: type(s).__name__)
 def test_alpha_at_t0_is_one(schedule: Schedule):
-    # LogLinear/Cosine/CosineSqr clip via an explicit `eps` and hit alpha(0)==1
-    # exactly; Linear/Geometric are parameterised through sigma_min instead, so
-    # alpha(0) = exp(-sigma_min) is only approximately 1 (matching the MDLM
-    # reference implementation's own convention, not a bug in the port).
+    # Linear/Geometric give alpha(0) = exp(-sigma_min), only approximately 1,
+    # as in the MDLM reference implementation.
     t0 = torch.zeros(1, dtype=torch.float64)
     assert torch.allclose(schedule.alpha(t0), torch.ones(1, dtype=torch.float64), atol=2e-3)
 

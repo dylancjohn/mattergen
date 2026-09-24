@@ -1,8 +1,7 @@
-"""Tests for the unconstrained MDLM atom-type diffusion family.
+"""Tests for unconstrained MDLM atom-type diffusion.
 
-Mirrors the structure of test_d3pm.py: schedule/marginal invariants, SUBS
-parameterisation correctness, and an end-to-end loss sanity check with a
-synthetic denoiser.
+Covers schedule-derived quantities, ``MDLMCorruption``, the SUBS
+parameterisation and ``mdlm_loss`` with a synthetic denoiser.
 """
 
 from __future__ import annotations

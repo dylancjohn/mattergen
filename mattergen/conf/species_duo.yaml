@@ -4,9 +4,7 @@ hydra:
 
 auto_resume: true
 
-# MatterGen with the species (element + oxidation-state) vocabulary and
-# unconstrained Duo atom-type diffusion. Same mp-20-os data and species vocab
-# as species.yaml; only the atom-type diffusion family differs.
+# Species vocabulary, unconstrained Duo atom-type diffusion.
 defaults:
   - data_module: mp_20_species
   - trainer: default

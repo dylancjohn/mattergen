@@ -1,7 +1,4 @@
-"""species_datamodule.py
-
-LightningDataModule for species-vocabulary training.
-"""
+"""LightningDataModule for training on the species vocabulary."""
 
 from __future__ import annotations
 
@@ -22,36 +19,21 @@ from mattergen.common.data.types import PropertySourceId
 
 
 class SpeciesDataModule(pl.LightningDataModule):
-    """DataModule serving SpeciesCrystalDataset splits for species-vocab training.
+    """DataModule serving ``SpeciesCrystalDataset`` splits.
 
-    Builds the species vocab internally so the class is fully Hydra-instantiable
-    without an external vocab object. The ``set_chemical_system_string`` transform
-    is intentionally excluded: it maps ``atomic_numbers`` to element symbols via
-    atomic number lookup, but in species mode ``atomic_numbers`` holds species
-    indices, not raw Z values.
+    Builds the default species vocabulary itself, so it is Hydra-instantiable
+    without an external vocab object. ``data_dir`` must contain ``train/`` and
+    ``val/``; without ``test/``, the val split is reused for testing.
+    ``num_workers`` and ``batch_size`` map ``train``/``val``/``test`` to values.
+    ``properties`` are loaded from ``{name}.json`` in each split, and
+    ``dataset_transforms`` (e.g. ``filter_sparse_properties``) are applied to
+    each loaded split. ``average_density`` is unused; it exists so the
+    corruption config can interpolate ``${data_module.average_density}``. Extra
+    Hydra keys are absorbed by ``**_``.
 
-    Parameters
-    ----------
-    data_dir : str or Path
-        Root directory of the dataset. Must contain ``train/`` and ``val/``
-        subdirectories. If ``test/`` is absent the val split is reused for
-        test evaluation.
-    num_workers : DictConfig
-        Mapping with ``train``, ``val``, ``test`` worker counts.
-    batch_size : DictConfig
-        Mapping with ``train``, ``val``, ``test`` batch sizes.
-    average_density : float or None
-        Ignored at runtime; present so the corruption config can reference
-        ``${data_module.average_density}`` via Hydra interpolation.
-    properties : list of PropertySourceId or None
-        Property names to load from ``{name}.json`` files in each split
-        directory (e.g. ``["dft_band_gap"]``). Passed through to
-        ``SpeciesCrystalDataset.from_cache_path``.
-    dataset_transforms : list of DatasetTransform or None
-        Whole-dataset transforms applied after loading each split, e.g.
-        ``filter_sparse_properties`` to drop structures missing a property.
-    **_ : Any
-        Absorbs any extra config-only keys forwarded by Hydra.
+    The ``set_chemical_system_string`` transform is deliberately omitted: it
+    reads ``atomic_numbers`` as atomic numbers, but here they are species
+    indices.
     """
 
     def __init__(
@@ -86,8 +68,7 @@ class SpeciesDataModule(pl.LightningDataModule):
 
         self.train_dataset = _load_split("train")
         self.val_dataset = _load_split("val")
-        # Fall back to val when a held-out test split is not present (e.g. fine-tuning
-        # datasets that only ship train/val).
+        # Fine-tuning datasets may ship only train/val.
         test_dir = data_dir / "test"
         self.test_dataset = (
             _load_split("test") if test_dir.exists() else self.val_dataset

@@ -1,9 +1,8 @@
 defaults:
   - mp_20
 
-# Same underlying structures as mp_20_species, minus the oxidation-state /
-# species vocab. atomic_numbers.npy is used directly; oxidation_states.npy
-# and dft_band_gap.json in this cache dir are simply ignored.
+# The mp_20_species structures on the element vocabulary: atomic_numbers.npy
+# is used directly and oxidation_states.npy and dft_band_gap.json are ignored.
 root_dir: ${oc.env:MP_20_OS_DATA_DIR,${oc.env:PROJECT_ROOT}/../datasets/mp-20-os}
 
 max_epochs: 900

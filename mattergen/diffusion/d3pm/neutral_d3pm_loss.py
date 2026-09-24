@@ -1,6 +1,9 @@
-"""neutral_d3pm_loss.py
+"""Structured (charge-neutral) training loss for MatterGen's absorbing D3PM.
 
-Structured charge-neutral training objective for MatterGen's absorbing D3PM.
+Both the clean-state CE and the reverse (VB) term normalise the model over
+charge-neutral species assignments, using log-partitions from the structured
+output layer. Logits are flat ``[N_atoms, K]`` over the species vocabulary,
+0-based, with MASK as the final class and charge zero.
 """
 
 from __future__ import annotations
@@ -109,12 +112,12 @@ def _numerator_logits(
 ) -> torch.Tensor:
     """Build the numerator's effective logits for the sampled reverse target.
 
-    Absorbing fast-path: at each newly-revealed site (``x_t == MASK`` and the
-    sampled ``x_{t-1} != MASK``, whose value equals the true ``x_0``), keep only
-    the revealed species — masking every other species to ``-inf`` while
-    retaining the model's *raw* logit at the revealed species (so the gradient
-    ``∂ log Z_num / ∂ ℓ_i(v) = ρ_i(v)`` flows).  Still-masked sites keep
-    ``den_logits`` unchanged; committed sites are already pinned there.
+    For an absorbing process, a newly revealed site (``x_t == MASK`` and the
+    sampled ``x_{t-1} != MASK``) must equal the true ``x_0``. There, every other
+    species is set to ``-inf`` while the model's raw logit at the revealed
+    species is kept, so the gradient ``∂ log Z_num / ∂ ℓ_i(v) = ρ_i(v)`` flows.
+    Still-masked sites keep ``den_logits``; committed sites are already pinned
+    there.
     """
     K = den_logits.shape[-1]
     revealed = (
@@ -145,7 +148,7 @@ def neutral_d3pm_loss(
     mask_idx: int,
     **_,
 ) -> torch.Tensor:
-    """Structured charge-neutral absorbing-D3PM loss for atomic numbers.
+    """Structured absorbing-D3PM loss for the species (``atomic_numbers``) field.
 
     The reverse term omits absorbing-posterior factors that are constant with
     respect to the compatible latent clean assignment.  Its value is therefore
@@ -154,7 +157,9 @@ def neutral_d3pm_loss(
     applied at every sampled time, including the reconstruction time, matching
     :func:`mattergen.diffusion.d3pm.d3pm.compute_kl_reverse_process`.
 
-    Returns a per-structure loss of shape ``(batch_size,)``.
+    ``mc_samples`` Monte Carlo draws of ``x_{t-1}`` estimate the reverse term.
+    Returns a per-structure loss ``[batch_size]``, divided by the number of
+    atoms when ``reduce == "mean"``.
     """
     assert hasattr(corruption, "N")  # mypy
     assert hasattr(corruption, "_to_zero_based")  # mypy

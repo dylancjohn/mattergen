@@ -1,19 +1,9 @@
-"""test_neutral_mdlm_sampler.py
+"""Tests for ``NeutralMDLMAncestralSamplingPredictor``.
 
-Tests for ``mattergen.diffusion.mdlm.neutral_mdlm_sampler``:
-
-    * ``NeutralMDLMAncestralSamplingPredictor`` — instantiates, produces
-      finite same-shape output, leaves visible sites untouched, reveals every
-      masked site neutrally at the final step, and its reveal probability
-      matches the schedule's ``u_{r,t}`` away from the final step.
-    * Independently sampling each site from its own constrained marginal can
-      produce a non-neutral joint outright, while the predictor's actual
-      joint sampling never does. This is why ``NeutralSampler``'s joint
-      backward sampling is used instead.
-
-``NeutralSampler`` (the underlying joint sampler, reused unmodified) is
-already exhaustively tested in ``test_neutral_sampler.py``; this file only
-covers the MDLM-specific reveal-scheduling logic layered on top of it.
+Covers output shapes, copying visible sites through, a neutral full reveal at
+the final step, the reveal rate ``u_{r,t}``, and why a joint sample is needed:
+independent per-site draws from the constrained marginals can be non-neutral.
+``NeutralSampler`` itself is tested in ``test_neutral_sampler.py``.
 """
 
 from __future__ import annotations
@@ -94,9 +84,8 @@ def test_visible_sites_copied_through_unchanged():
 
 
 def test_final_step_reveals_all_masked_sites_neutrally():
-    """s = t + dt <= 0 forces every masked site to reveal; the revealed
-    values must jointly satisfy charge neutrality (drawn from NeutralSampler,
-    not independently per site)."""
+    """s = t + dt <= 0 forces every masked site to reveal, and the revealed
+    values must be jointly neutral."""
     charge_of = [-1, 0, 1, 0]
     mask_idx = 3
     predictor, _ = _build_predictor(charge_of, mask_idx)
@@ -146,16 +135,13 @@ def test_reveal_probability_matches_schedule():
 
 
 def test_independent_marginal_sampling_would_be_wrong_but_predictor_is_always_neutral():
-    """Sampling each currently-masked site independently from its
-    own constrained marginal can produce a non-neutral joint outright, since
-    a one-site marginal does not encode which *combination* of choices is
-    jointly valid. With three symmetric non-mask candidates A(-1), B(0),
-    C(+1) and two masked sites, the three neutral joint assignments (A,C),
-    (C,A), (B,B) are equally likely by symmetry, so every site's constrained
-    marginal is uniform (1/3, 1/3, 1/3) -- but independently drawing from
-    that marginal at each site lands on a non-neutral pair (e.g. (A,A)) about
-    two-thirds of the time. The predictor's actual finite-step sampler must
-    never do this: it always draws one joint neutral assignment first.
+    """One-site marginals do not say which combinations are jointly valid.
+
+    With species A(-1), B(0), C(+1) and two masked sites, the neutral
+    assignments (A,C), (C,A), (B,B) are equally likely, so each site's
+    constrained marginal is uniform. Independent draws from those marginals
+    are non-neutral two-thirds of the time; the predictor, which draws one
+    joint assignment, must always be neutral.
     """
     charge_of = [-1, 0, 1, 0]  # A, B, C, MASK
     mask_idx = 3

@@ -1,6 +1,6 @@
 _target_: mattergen.denoiser.GemNetTDenoiser
 hidden_dim: 512
-# num_atom_types = vocab.num_species; resolved at runtime via the species_vocab_size resolver.
+# num_species, excluding MASK, from the species_vocab_size resolver.
 num_atom_types: ${species_vocab_size:}
 gemnet:
   _target_: mattergen.common.gemnet.gemnet.GemNetT

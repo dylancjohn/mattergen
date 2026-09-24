@@ -1,8 +1,4 @@
-"""neutral_mdlm_loss.py
-
-Structured charge-neutral training objective for MatterGen's continuous-time
-MDLM.
-"""
+"""Structured charge-neutral training objective for MDLM atom-type diffusion."""
 
 from __future__ import annotations
 
@@ -99,15 +95,15 @@ def neutral_mdlm_loss(
     mask_idx: int,
     **_,
 ) -> torch.Tensor:
-    """Structured charge-neutral MDLM loss for atomic numbers.
+    """Structured MDLM loss for the species field (``atomic_numbers``).
 
-    Replaces the raw per-site clean-state probability at each masked site
-    with its exact charge-neutral one-site marginal, obtained from a single
-    forward-backward DP pass over the whole structure. Unlike structured
-    D3PM, no reverse target needs to be sampled: the continuous-time ELBO is
-    a direct weighted masked-site cross-entropy.
+    As ``mdlm_loss``, but the clean-state probability at each masked site is
+    its exact charge-neutral one-site marginal, from one forward-backward DP
+    pass per structure. Unlike structured D3PM, no reverse target is sampled:
+    the continuous-time ELBO is a weighted masked-site cross-entropy.
 
-    Returns a per-structure loss of shape ``(batch_size,)``.
+    Clean targets must be charge-neutral and MASK must be the last class,
+    with charge zero. Returns a per-structure loss of shape ``[batch_size]``.
     """
     assert hasattr(corruption, "schedule")  # mypy
     assert hasattr(corruption, "mask_index")  # mypy
@@ -142,9 +138,8 @@ def neutral_mdlm_loss(
     q_max = compute_q_max(charge_of, int(n_sites.max().item()))
     _validate_neutral_targets(x0_pad, attention_mask, charge_tensor)
 
-    # Same pinning convention as structured D3PM's denominator. Skips SUBS's
-    # own softmax normalisation: the constrained marginal ratio is invariant
-    # to a positive per-site rescaling, so pinning the raw logits is equivalent.
+    # Same pinning as structured D3PM. SUBS's softmax is skipped because the
+    # constrained marginals are invariant to a per-site shift of the logits.
     pinned_logits = pin_committed_candidates(logits_pad, xt_pad, attention_mask, mask_idx)
 
     log_marginals, log_z = neutral_marginals_diff(
@@ -167,15 +162,13 @@ def neutral_mdlm_loss(
 
 
 def make_neutral_mdlm_loss():
-    """Factory returning a ``neutral_mdlm_loss`` FieldLoss with charges bound.
+    """Return ``neutral_mdlm_loss`` with ``charge_of``/``mask_idx`` bound.
 
-    Builds ``charge_of``/``mask_idx`` once from the species vocabulary. Use as
+    Both are built once from the species vocabulary. Use as
     ``lightning_module.diffusion_module.loss_fn.atomic_numbers_loss_partial``
     (see :class:`mattergen.common.loss.MaterialsLoss`), which supplies
-    ``reduce`` itself at call time. Unlike ``make_neutral_d3pm_loss``, there
-    are no ablation knobs (``vb_weight``/``ce_weight``/``mc_samples``): the
-    continuous-time MDLM ELBO is a single direct term, not a weighted sum of
-    a reconstruction and a reverse KL requiring a Monte Carlo estimate.
+    ``reduce`` at call time. Unlike ``make_neutral_d3pm_loss`` there are no
+    weighting or Monte Carlo options, since the MDLM ELBO is a single term.
     """
     charge_of, mask_idx = build_charge_of()
     return partial(neutral_mdlm_loss, charge_of=charge_of, mask_idx=mask_idx)

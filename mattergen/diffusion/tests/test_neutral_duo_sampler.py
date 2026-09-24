@@ -1,14 +1,11 @@
-"""test_neutral_duo_sampler.py
+"""Tests for structured Duo sampling in ``mattergen.diffusion.duo.neutral_duo_sampler``.
 
-Tests for ``mattergen.diffusion.duo.neutral_duo_sampler``:
-
-    * ``NeutralDuoSampler`` -- charge-neutral joint samples, loud RuntimeError
-      on infeasibility, vocabulary validation.
-    * ``NeutralDuoAncestralSamplingPredictor`` -- instantiates, produces
-      finite same-shape output, and the latent it conditions on
-      (``NeutralDuoSampler``'s draw) is neutral. Every site remains revisable
-      (no visible/masked distinction, unlike D3PM/MDLM).
-    * Hydra config instantiation smoke test.
+    * ``NeutralDuoSampler``: charge-neutral joint samples, RuntimeError on
+      infeasibility, vocabulary validation.
+    * ``NeutralDuoAncestralSamplingPredictor``: finite same-shape output, a
+      charge-neutral conditioning latent, and exact recovery of that latent
+      at the final step.
+    * Hydra sampling config instantiation.
 """
 
 from __future__ import annotations
@@ -73,11 +70,10 @@ class TestNeutralDuoSampler:
             sampler(logits, current_state, alpha_u, batch_idx)
 
     def test_hard_excluded_candidate_does_not_rescue_infeasibility(self):
-        """A candidate excluded via true -inf (as mask_disallowed_species now
-        produces) must not be treated as reachable. Species 1 here is the
-        only route to neutrality (species 0 + species 1 = 0); with species 0
-        and species 2 alone, no two-site sum reaches zero, so this must
-        raise, not silently pick species 1."""
+        """A candidate excluded with a true -inf logit (as produced by
+        mask_disallowed_species) must not be treated as reachable. Species 1
+        is the only route to neutrality (charges +1, -1, +3), so excluding it
+        must raise rather than silently pick it."""
         charge_of = [1, -1, 3]
         sampler = NeutralDuoSampler(charge_of=charge_of)
 

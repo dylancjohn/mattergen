@@ -55,9 +55,8 @@ def test_train_on_one_batch(config_name: str) -> None:
     ],
 )
 def test_mdlm_duo_configs_use_reference_matched_min_t(config_name: str) -> None:
-    """MDLM/Duo entrypoints must override the timestep_sampler floor to 1e-3
-    (matching the reference implementations' own sampling_eps), not silently
-    inherit MatterGen's D3PM-tuned default of 1e-5."""
+    """MDLM and Duo configs must set the timestep floor to 1e-3, the reference
+    implementations' ``sampling_eps``, rather than inherit D3PM's 1e-5."""
     with hydra.initialize_config_dir(config_dir=CONFIG_DIR):
         config = hydra.compose(config_name=config_name)
 

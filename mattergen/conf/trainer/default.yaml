@@ -18,7 +18,6 @@ logger:
   job_type: train
   settings:
     _target_: wandb.Settings
-    start_method: fork
     _save_requirements: False
 
 callbacks:

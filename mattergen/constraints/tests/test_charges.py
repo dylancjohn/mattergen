@@ -1,7 +1,4 @@
-"""test_charges.py
-
-Unit tests for mattergen/constraints/charges.py.
-"""
+"""Tests for ``build_charge_of``."""
 
 from __future__ import annotations
 
@@ -29,8 +26,7 @@ def test_charge_of_matches_vocab_oxidation_states():
     vocab = build_species_vocab()
     charge_of, _ = build_charge_of()
 
-    # 0-based index k in charge_of corresponds to 1-based species index k+1
-    # in the vocab; every non-MASK entry must round-trip exactly.
+    # 0-based index k in charge_of is 1-based species index k+1 in the vocab.
     for k in range(vocab.num_species):
         assert charge_of[k] == vocab.oxidation_state_of(k + 1)
 

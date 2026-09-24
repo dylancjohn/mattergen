@@ -1,11 +1,9 @@
-"""test_neutral_sampler.py
+"""Tests for ``NeutralSampler``.
 
-Tests for ``mattergen.diffusion.sampling.neutral_sampler.NeutralSampler``:
-one-hot output, charge-neutral joint samples, committed sites preserved,
-loud RuntimeError on infeasibility, MASK never sampled.
-
-Takes flat ``[N_atoms, K]`` logits + a 1-based ``x_t`` + ``batch_idx``
-(MatterGen's ChemGraph convention).
+Checks one-hot output, charge-neutral joint samples, preserved committed sites,
+that MASK is never sampled, and that infeasibility raises ``RuntimeError``.
+Inputs follow the ChemGraph convention: flat ``[N_atoms, K]`` logits, 1-based
+``x_t`` and ``batch_idx``.
 """
 
 from __future__ import annotations
@@ -140,10 +138,10 @@ class TestNeutralSampler:
             sampler(logits, x_t, t=1, batch_idx=batch_idx)
 
     def test_true_neginf_excluded_candidate_does_not_rescue_infeasibility(self):
-        """A candidate excluded via true -inf must not be treated as reachable
-        by the DP. Species 1 here is the only route to neutrality (species 0
-        + species 1 = 0); with species 0 and species 2 alone, no two-site sum
-        reaches zero, so this must raise, not silently pick species 1.
+        """A species excluded with -inf must be unreachable in the DP.
+
+        Species 1 is the only route to neutrality; species 0 and 2 alone give
+        no neutral two-site sum, so this must raise rather than pick species 1.
         """
         charge_of = [1, -1, 3, 0]
         mask_idx = 3

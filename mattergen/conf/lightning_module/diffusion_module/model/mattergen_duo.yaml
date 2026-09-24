@@ -18,9 +18,8 @@ gemnet:
   otf_graph: true
   scale_file: ${oc.env:PROJECT_ROOT}/common/gemnet/gemnet-dT.json
 denoise_atom_types: true
-# Duo is a uniform-state (mask-free) diffusion family: with_mask_type resolves
-# to False above, so fc_atom and the embedding table have no MASK column --
-# num_atom_types (below/via num_species) is the full and only clean vocabulary.
+# Duo is uniform-state, so with_mask_type resolves to False and neither fc_atom
+# nor the atom embedding has a MASK column.
 atom_type_diffusion: uniform
 property_embeddings_adapt: {}
 property_embeddings: {}

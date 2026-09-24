@@ -4,11 +4,8 @@ hydra:
 
 auto_resume: true
 
-# MatterGen with the species (element + oxidation-state) vocabulary, MDLM
-# atom-type diffusion, AND the structured charge-neutral training objective
-# (make_neutral_mdlm_loss, injected into MaterialsLoss.atomic_numbers_loss_partial).
-# Same mp-20-os data and species vocab as species_mdlm.yaml; only the atom-type
-# loss differs (diffusion_module: neutral_mdlm).
+# Species vocabulary, MDLM atom-type diffusion with the structured
+# (charge-neutral) loss.
 defaults:
   - data_module: mp_20_species
   - trainer: default

@@ -1,8 +1,8 @@
 # Ported near-verbatim from Duo's `DUO_BASE.nll_per_token`
 # (https://github.com/s-sahoo/duo), which is released under the Apache
-# License, Version 2.0. Adapted here to MatterGen's flat [N_atoms, K]
-# per-atom convention (no [batch, length] axis) and to alpha(t)/alpha'(t)
-# supplied by a mattergen.diffusion.continuous_time.schedule.Schedule.
+# License, Version 2.0. Adapted to MatterGen's flat [N_atoms, K] per-atom
+# tensors (no [batch, length] axis), with alpha(t) and alpha'(t) supplied by
+# a mattergen.diffusion.continuous_time.schedule.Schedule.
 
 """Unconstrained Duo training objective: the closed-form, Rao-Blackwellised
 ``f_Duo`` continuous-time NELBO.
@@ -28,15 +28,12 @@ def _duo_rate_nll(
     dalpha_t: torch.Tensor,
     num_classes: int,
 ) -> torch.Tensor:
-    """Per-atom Rao-Blackwellised rate-KL NELBO term.
+    """Per-atom Rao-Blackwellised rate-KL NELBO term, shape ``[N_atoms]``.
 
-    Args:
-        log_x_theta: denoiser log-probabilities over clean categories, flat
-            ``[N_atoms, K]``.
-        xt, x0: current noisy / clean category per atom, flat ``[N_atoms]``,
-            0-based.
-        alpha_t, dalpha_t: ``alpha(t)``, ``alpha'(t)`` per atom, flat ``[N_atoms]``.
-        num_classes: ``K``.
+    ``log_x_theta`` ``[N_atoms, K]`` are denoiser log-probabilities over clean
+    categories; ``xt``, ``x0`` ``[N_atoms]`` are 0-based noisy and clean
+    categories; ``alpha_t``, ``dalpha_t`` ``[N_atoms]`` are ``alpha(t)`` and
+    ``alpha'(t)``.
     """
     K = num_classes
     x_reconst = log_x_theta.exp()
@@ -76,6 +73,10 @@ def duo_loss(
     reduce: Literal["sum", "mean"],
     **_,
 ) -> torch.Tensor:
+    """Unconstrained Duo loss for the atom-type field, per structure ``[batch_size]``.
+
+    ``score_model_output`` holds clean-category logits ``[N_atoms, K]``.
+    """
     assert hasattr(corruption, "schedule")  # mypy
     assert hasattr(corruption, "num_classes")  # mypy
     assert hasattr(corruption, "_to_zero_based")  # mypy

@@ -1,16 +1,8 @@
-"""test_neutral_mdlm_loss.py
+"""Tests for the structured MDLM loss ``neutral_mdlm_loss``.
 
-Tests for the structured charge-neutral training loss in
-``mattergen.diffusion.mdlm.neutral_mdlm_loss``:
-
-    * gradcheck w.r.t. the raw logits.
-    * A neutral clean state gives a finite loss at every t.
-    * Constrained one-site marginals match brute-force enumeration.
-    * Committed and MASK-column gradients are exactly zero.
-    * constraint-off (every candidate charge zero) reduces to plain mdlm_loss.
-    * Invalid targets / partitions / vocabularies fail loudly.
-    * make_neutral_mdlm_loss wires the constrained loss into MaterialsLoss's
-      injectable atomic_numbers_loss_partial.
+Covers gradients, agreement of the one-site marginals with brute-force
+enumeration, reduction to ``mdlm_loss`` when every charge is zero, input
+validation, and wiring into ``MaterialsLoss`` and the Hydra config.
 """
 
 from __future__ import annotations
@@ -103,10 +95,8 @@ def test_committed_and_mask_columns_have_zero_gradient():
 
 
 def test_marginal_matches_brute_force_enumeration():
-    """Constrained one-site marginals must match exhaustive
-    enumeration over every neutral joint assignment. Uses two masked sites
-    with no committed neighbour, so this genuinely exercises the joint DP,
-    not just a single-site special case."""
+    """Two masked sites and no committed site, so the joint DP is exercised
+    rather than a single-site special case."""
     torch.manual_seed(2)
     raw_logits = torch.randn(2, K, dtype=torch.float64)
     xt = torch.tensor([[MASK_IDX, MASK_IDX]], dtype=torch.long)
@@ -137,9 +127,8 @@ def test_marginal_matches_brute_force_enumeration():
 
 
 def test_constraint_off_matches_unconstrained_mdlm():
-    """With every candidate charge zero, the neutrality constraint is
-    vacuous (every joint assignment is trivially neutral), so the structured
-    loss must reduce to plain masked cross-entropy."""
+    """With every charge zero the constraint is vacuous, so the structured
+    loss must equal ``mdlm_loss``."""
     zero_charge_of = [0, 0, 0, 0]
     score, x, noisy_x, batch_idx = _batch(dtype=torch.float64, seed=5)
     t = torch.tensor([0.3, 0.7], dtype=torch.float64)

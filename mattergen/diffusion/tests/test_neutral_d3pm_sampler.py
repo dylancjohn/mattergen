@@ -1,12 +1,8 @@
-"""test_neutral_d3pm_sampler.py
+"""Tests for ``NeutralD3PMAncestralSamplingPredictor``.
 
-Tests for ``NeutralD3PMAncestralSamplingPredictor``: instantiates on a small
-MaskDiffusion, ``update_given_score`` returns finite same-shape samples, the
-constraint it applies yields a neutral latent x_0, and its empirical reverse
-samples match the exact structured mixture.
-
-``NeutralSampler`` itself (the underlying joint sampler this predictor uses)
-is tested separately in ``test_neutral_sampler.py``.
+Checks output shapes, that the latent ``x_0`` it conditions on is neutral, and
+that its empirical reverse samples match the exact structured mixture.
+``NeutralSampler`` itself is tested in ``test_neutral_sampler.py``.
 """
 
 from __future__ import annotations

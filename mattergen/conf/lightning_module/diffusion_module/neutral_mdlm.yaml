@@ -7,10 +7,9 @@ loss_fn:
   include_atomic_numbers: True
   atomic_numbers_loss_partial:
     _target_: mattergen.diffusion.mdlm.neutral_mdlm_loss.make_neutral_mdlm_loss
-    # Structured charge-neutral atom-type objective. Unlike neutral_d3pm, there
-    # are no vb_weight/ce_weight/mc_samples ablation knobs: the continuous-time
-    # MDLM ELBO is a single direct weighted masked-site cross-entropy term, not
-    # a weighted sum of a reconstruction and a Monte-Carlo-estimated reverse KL.
+    # Structured (charge-neutral) MDLM loss. Unlike neutral_d3pm it has no
+    # vb_weight/ce_weight/mc_samples: the continuous-time MDLM ELBO is a single
+    # weighted masked-site cross-entropy, with no Monte Carlo reverse KL.
   weights:
     cell: 1.0
     pos: 0.1
@@ -21,11 +20,10 @@ pre_corruption_fn:
   _target_: mattergen.property_embeddings.SetEmbeddingType
   p_unconditional: 0.2
   dropout_fields_iid: false
-# Matches the reference implementation's own training-time floor
-# (mdlm/configs/config.yaml: training.sampling_eps=1e-3), rather than
-# MatterGen's D3PM-tuned default of 1e-5. Note the denoiser still conditions
-# on raw t (NoiseLevelEncoding), not on the reference's sigma = -log(alpha(t));
-# this is unchanged, shared MatterGen behaviour, not specific to this family.
+# min_t matches training.sampling_eps in the reference implementation
+# (https://github.com/kuleshov-group/mdlm) rather than MatterGen's D3PM default of 1e-5.
+# As for every family, the denoiser is conditioned on t, not on the
+# reference's sigma = -log(alpha(t)).
 timestep_sampler:
   _target_: mattergen.diffusion.timestep_samplers.UniformTimestepSampler
   min_t: 1e-3

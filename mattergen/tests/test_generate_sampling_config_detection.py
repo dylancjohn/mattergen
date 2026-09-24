@@ -1,17 +1,11 @@
-# Copyright (c) Microsoft Corporation.
-# Licensed under the MIT License.
+"""Tests for inferring the sampling config from a checkpoint's training config.
 
-"""test_generate_sampling_config_detection.py
-
-Tests for generate.py's checkpoint-driven sampling_config_name auto-detection:
-is_compatible() on the predictors only rejects cross-family mismatches (e.g. an
-MDLM predictor on a D3PM checkpoint) -- it does not catch constrained-vs-
-unconstrained mismatches, since a family's corruption class is shared
-identically between its constrained and unconstrained variants. Sampling a
-constrained-trained checkpoint with an unconstrained sampling config silently
-drops the charge-neutrality guarantee with no error at all, so generate.py
-instead infers the matching sampling_conf entrypoint from the checkpoint's own
-saved corruption and loss targets.
+Predictors' ``is_compatible()`` only rejects cross-family mismatches (e.g. an
+MDLM predictor on a D3PM checkpoint). Constrained and unconstrained variants
+share a corruption class, so sampling a constrained checkpoint with an
+unconstrained config would silently drop charge neutrality. ``generate.py``
+therefore picks the ``sampling_conf`` entrypoint from the saved corruption
+and loss targets.
 """
 
 import os
@@ -46,8 +40,7 @@ def test_detects_matching_sampling_config(
 
 
 def test_returns_none_for_unrecognised_corruption_or_loss_targets():
-    """Non-atom-type-diffusion setups (e.g. CSP) must fall back to prior
-    behaviour rather than have detection guess wrong."""
+    """Unrecognised setups (e.g. CSP) must return None rather than a guess."""
     from omegaconf import OmegaConf
 
     config = OmegaConf.create(

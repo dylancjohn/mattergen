@@ -1,13 +1,10 @@
-"""neutral_duo_loss.py
+"""Structured (charge-neutral) training loss for continuous-time Duo.
 
-Structured charge-neutral training objective for MatterGen's continuous-time
-Duo.
-
-Duo's clean-state prediction is nonlinearly substituted into the uniform-state
-posterior, so the constrained loss is not a simple masked-marginal
-cross-entropy as for D3PM/MDLM: it replaces the entire per-site prediction by
-a forward-likelihood-*tilted* charge-neutral joint distribution, then compares
-the true and model reverse-rate ratios site by site.
+Duo substitutes the clean-state prediction nonlinearly into the uniform-state
+posterior, so the structured loss is not a masked-marginal cross-entropy as
+for D3PM and MDLM. Instead it replaces every per-site prediction by the
+marginals of a forward-likelihood-tilted charge-neutral joint distribution,
+then compares true and model reverse-rate ratios site by site.
 """
 
 from __future__ import annotations
@@ -92,16 +89,13 @@ def neutral_duo_loss(
     charge_of: list[int],
     **_,
 ) -> torch.Tensor:
-    """Structured charge-neutral Duo loss for atomic numbers.
+    """Structured Duo loss for the atom-type field, per structure ``[batch_size]``.
 
-    Builds the forward-likelihood-tilted local weights ``w_i(a) = ell_i(a) *
-    g_t(s_t[i] | a)``, runs one DP pass to get the tilted one-site marginals
-    ``omega_i``, forms the model rate ratio ``v_{i,b}`` from those marginals
-    in closed form, and compares it to the true two-case rate ratio ``u*_{i,b}``
-    via the rate-KL sum. A single forward-backward pass provides every needed
-    ``v_{i,b}``; no per-``(i,b)`` DP call is made.
-
-    Returns a per-structure loss of shape ``(batch_size,)``.
+    Builds tilted local weights ``w_i(a) = ell_i(a) * g_t(s_t[i] | a)``, runs
+    one DP forward-backward pass for the tilted one-site marginals
+    ``omega_i``, forms the model rate ratio ``v_{i,b}`` from them in closed
+    form and compares it with the true two-case ratio ``u*_{i,b}`` via the
+    rate-KL sum. No per-``(i, b)`` DP call is needed.
     """
     assert hasattr(corruption, "schedule")  # mypy
     assert hasattr(corruption, "num_classes")  # mypy
@@ -154,12 +148,11 @@ def neutral_duo_loss(
     ApR_over_R = ((A_t + R_t) / R_t).view(-1, 1, 1)
     omega_c = omega.gather(-1, xt_pad.unsqueeze(-1))  # [B, N, 1]
 
-    # v_b = omega_b*(A+R)/R + omega_c*R/(A+R) + (1 - omega_b - omega_c): an
-    # explicit non-negative mixture, algebraically identical to
-    # 1 + (A/R)*omega_b - (A/(A+R))*omega_c but without subtracting two
-    # close-in-magnitude terms as t -> 0 (A/R -> inf), which let the
-    # cancellation-prone form underflow to a spuriously negative v under
-    # float32 rounding (confirmed empirically at K=428).
+    # v_b = omega_b*(A+R)/R + omega_c*R/(A+R) + (1 - omega_b - omega_c) is a
+    # non-negative mixture, algebraically equal to
+    # 1 + (A/R)*omega_b - (A/(A+R))*omega_c. The latter subtracts terms of
+    # similar magnitude as t -> 0 (A/R -> inf) and can go negative under
+    # float32 rounding (observed at K=428).
     term_b = torch.nan_to_num(omega * ApR_over_R, nan=0.0)  # guards 0*inf as t->0
     term_c = omega_c * R_over_ApR
     residual = (1.0 - omega - omega_c).clamp(min=0.0)  # fp rounding guard (exact for b != c)

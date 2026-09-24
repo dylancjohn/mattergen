@@ -2,17 +2,17 @@
 # (noise_schedule.py), which is released under the Apache License, Version 2.0.
 
 """Continuous-time noise schedules shared by the MDLM and Duo atom-type
-diffusion families: a strictly decreasing survival coefficient ``alpha(t)``
-on ``[0, 1]``, with ``alpha(0) ~= 1`` and ``alpha(1) ~= 0`` (bounded away from
-the exact endpoints rather than reaching them), plus its derivative and
+diffusion families.
+
+A schedule is a strictly decreasing survival coefficient ``alpha(t)`` on
+``[0, 1]``, with t=0 clean and t=1 noise, together with its derivative and
 finite-interval ratio.
 
-``LogLinearSchedule``/``CosineSchedule``/``CosineSqrSchedule`` reach
-``alpha(0) = 1`` exactly and ``alpha(1) = eps > 0``. ``LinearSchedule``/
-``GeometricSchedule`` instead approach both endpoints only approximately:
-``alpha(0) = exp(-sigma_min)`` and ``alpha(1) = exp(-sigma_max)``. This
-matches the reference implementations' own convention rather than reaching
-the exact endpoints, at the cost of a correspondingly small bias.
+``LogLinearSchedule``, ``CosineSchedule`` and ``CosineSqrSchedule`` give
+``alpha(0) = 1`` exactly and ``alpha(1) = eps``. ``LinearSchedule`` and
+``GeometricSchedule`` give ``alpha(0) = exp(-sigma_min)`` and
+``alpha(1) = exp(-sigma_max)``, so ``alpha(0)`` is only approximately 1. This
+follows the MDLM reference implementation.
 """
 
 from __future__ import annotations
@@ -55,9 +55,8 @@ class LogLinearSchedule(Schedule):
 class CosineSchedule(Schedule):
     """``alpha(t) = eps + (1 - eps) * cos(t * pi / 2)``.
 
-    Validated against MDLM only. Duo's own cosine schedule uses a different
-    functional form; do not select this schedule for Duo without checking
-    numerical agreement first.
+    Validated against MDLM only. Duo's reference cosine schedule has a
+    different functional form, so check agreement before using this for Duo.
     """
 
     def __init__(self, eps: float = 1e-3):

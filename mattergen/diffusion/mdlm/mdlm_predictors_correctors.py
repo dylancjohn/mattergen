@@ -44,9 +44,8 @@ class MDLMAncestralSamplingPredictor(Predictor):
 
         xt_zero = corruption._to_zero_based(x.long())
         t_per_atom = maybe_expand(t, batch_idx)
-        # dt is a 0-d scalar shared by the whole batch, so ordinary broadcasting
-        # against t_per_atom is correct here; maybe_expand assumes a batch
-        # dimension, which a 0-d dt does not have.
+        # dt is a 0-d scalar shared by the batch, so plain broadcasting is
+        # used; maybe_expand needs a batch dimension that dt lacks.
         s_per_atom = t_per_atom + dt  # dt <= 0, so s <= t
 
         log_probs = subs_log_probs(score, xt_zero, corruption.mask_index)

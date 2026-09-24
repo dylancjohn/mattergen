@@ -108,9 +108,8 @@ def get_crystals_list(
 def save_structures(output_path: Path, structures: Sequence[Structure]) -> None:
     """Save structures to disk in a extxyz file and a compressed zip file containing cif files.
 
-    CIF files are written via pymatgen's CifWriter so that oxidation states on
-    Species sites are preserved in the _atom_site_type_symbol column. The extxyz
-    file is written via ASE and does not carry oxidation state information.
+    CIFs are written with pymatgen's CifWriter, which keeps oxidation states of
+    Species sites in `_atom_site_type_symbol`. The ASE extxyz file drops them.
 
     Args:
         output_path: path to a directory where the results are written.
@@ -162,14 +161,12 @@ _GEN_CIF_INDEX_RE = re.compile(r"^gen_(\d+)\.cif$")
 
 
 def _cif_sort_key(filename: str) -> tuple[float, str]:
-    """Order gen_{ix}.cif files by their numeric index, not filesystem/lexicographic order.
+    """Sort key ordering gen_{ix}.cif files by numeric index.
 
-    save_structures() writes generated_crystals.extxyz and generated_crystals_cif.zip
-    from the same structures list, in the same index order. os.listdir() returns
-    entries in arbitrary filesystem order (and even a naive alphabetical sort would
-    put "gen_10.cif" before "gen_2.cif"), which desyncs the CIF read order from the
-    extxyz frame order. Sorting by the embedded index restores the 1:1 correspondence.
-    Files not matching the gen_{ix}.cif pattern sort after all indexed ones, by name.
+    save_structures() writes the CIFs and extxyz frames in the same order, and
+    os.listdir() order or a lexicographic sort ("gen_10" < "gen_2") would break
+    that correspondence.
+    Files not matching gen_{ix}.cif sort after all indexed ones, by name.
     """
     match = _GEN_CIF_INDEX_RE.match(filename)
     return (float(match.group(1)) if match else float("inf"), filename)

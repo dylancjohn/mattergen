@@ -1,8 +1,4 @@
-"""neutral_sampler.py
-
-Inference-time charge-neutrality constraint shared by MatterGen's absorbing
-D3PM and MDLM predictors.
-"""
+"""Structured (charge-neutral) clean-state sampling shared by the D3PM and MDLM predictors."""
 
 from __future__ import annotations
 
@@ -20,19 +16,13 @@ from mattergen.diffusion.corruption.candidate_pinning import pin_committed_candi
 
 
 class NeutralSampler:
-    """Joint charge-neutral clean-state sampler as a logits transform.
+    """Joint charge-neutral clean-state sampler, applied as a logits transform.
 
-    Draws a single joint sample from the charge-neutral clean-state
-    distribution via left-to-right autoregressive sampling conditioned on the
-    running charge (``neutral_layer.generation.dp.neutral_sample``), and
-    returns it encoded as one-hot logits. Raises ``RuntimeError`` if no
-    charge-neutral assignment exists.
-
-    Args:
-        charge_of: Integer charge per 0-based vocab index (including MASK = 0
-            at the end). Defaults to :func:`build_charge_of`.
-        mask_idx: 0-based index of the MASK token. Defaults to
-            :func:`build_charge_of`.
+    Draws one exact joint sample of ``x_0`` from the structured distribution
+    (``neutral_layer.generation.dp.neutral_sample``) and returns it as one-hot
+    logits. ``charge_of`` gives the integer charge per 0-based species-vocabulary
+    index, ending with MASK (charge 0) at ``mask_idx``. Both default to
+    :func:`build_charge_of` and must be given together or not at all.
     """
 
     def __init__(
@@ -77,20 +67,15 @@ class NeutralSampler:
         t: Tensor,
         batch_idx: LongTensor,
     ) -> FloatTensor:
-        """Sample jointly from the charge-neutral distribution.
+        """Sample ``x_0`` jointly from the charge-neutral distribution.
 
-        Args:
-            logits: Raw model logits for ``p_theta(x_0 | x_t)``, flat
-                ``[N_atoms, K]``, 0-based index space.
-            x_t: Current noisy atom indices, flat ``[N_atoms]``, 1-based (as
-                stored in MatterGen's ChemGraph; MASK = mask_idx + 1).
-            t: Current diffusion timestep (unused; present for API symmetry).
-            batch_idx: Crystal index per atom, ``[N_atoms]``.
-
-        Returns:
-            Flat ``[N_atoms, K]`` one-hot logits (0.0 at the sampled token,
-            -inf elsewhere). Raises ``RuntimeError`` if any crystal has no
-            charge-neutral assignment.
+        ``logits`` are the raw 0-based model logits for ``p_θ(x_0 | x_t)``,
+        flat ``[N_atoms, K]``. ``x_t`` ``[N_atoms]`` holds the 1-based noisy
+        indices as stored in ChemGraph (MASK is ``mask_idx + 1``); committed
+        sites keep their value. ``t`` is unused and kept for API symmetry.
+        Returns flat ``[N_atoms, K]`` one-hot logits (0 at the sampled species,
+        ``-inf`` elsewhere). Raises ``RuntimeError`` if a crystal has no
+        charge-neutral assignment.
         """
         if logits.ndim != 2:
             raise ValueError(f"logits must have shape [N_atoms, K], got {logits.shape}")
@@ -117,7 +102,6 @@ class NeutralSampler:
         device = logits.device
         batch_size = int(batch_idx.max().item()) + 1
 
-        # x_t arrives 1-based; convert to 0-based (MASK = mask_idx).
         x_t_zero = x_t - 1
 
         logits_pad, attention_mask = flat_to_padded(logits, batch_idx, batch_size)
@@ -139,7 +123,6 @@ class NeutralSampler:
         charge_tensor = self._get_charge_tensor(device)
         q_max = compute_q_max(self.charge_of, int(n_sites.max().item()))
 
-        # Draw a joint charge-neutral assignment via the backward DP table.
         samples, feasible = neutral_sample(pinned, charge_tensor, q_max, n_sites)
 
         # Fail rather than silently emit a non-neutral structure.
@@ -162,7 +145,6 @@ class NeutralSampler:
                 "issues in the charge-state DP."
             )
 
-        # Encode samples as one-hot logits.
         one_hot = torch.full((B, N, K), float("-inf"), device=device)
         one_hot.scatter_(2, samples.unsqueeze(2), 0.0)
 

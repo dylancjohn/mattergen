@@ -1,13 +1,10 @@
-"""neutral_mdlm_sampler.py
-
-Inference-time charge-neutrality constraint for MatterGen's continuous-time
-MDLM.
+"""Structured (charge-neutral) sampling for MDLM atom-type diffusion.
 
 Joint neutral clean-state sampling uses the same pinned absorbing-mask
-convention as structured D3PM (visible sites are singleton candidates,
-masked sites keep all non-mask clean species), so this reuses
-:class:`mattergen.diffusion.sampling.neutral_sampler.NeutralSampler` directly
-rather than re-implementing it.
+convention as structured D3PM (visible sites are singleton candidates, masked
+sites keep all non-mask species), so
+:class:`mattergen.diffusion.sampling.neutral_sampler.NeutralSampler` is
+reused as is.
 """
 
 from __future__ import annotations
@@ -29,12 +26,12 @@ from mattergen.diffusion.sampling.predictors_correctors import SampleAndMean
 class NeutralMDLMAncestralSamplingPredictor(MDLMAncestralSamplingPredictor):
     """MDLM ancestral predictor that enforces charge neutrality.
 
-    For each reverse step: (1) draw one complete neutral clean assignment
-    from the pinned charge-neutral distribution via :class:`NeutralSampler`;
-    (2) independently reveal each currently masked site from that assignment
-    with the same Bernoulli probability ``u_{r,t}`` the base class already
-    uses. Revealing several sites at once retains the correlations charge
-    neutrality imposes between them, unlike an independent per-site reveal.
+    Each reverse step (1) draws one complete neutral clean assignment from
+    the pinned charge-neutral distribution via :class:`NeutralSampler`, then
+    (2) reveals each masked site from that assignment independently with
+    probability ``u_{r,t}``, as in the base class. Taking revealed values from
+    one joint sample keeps the correlations that neutrality imposes between
+    sites, which independent per-site sampling would lose.
     """
 
     def __init__(
@@ -61,8 +58,8 @@ class NeutralMDLMAncestralSamplingPredictor(MDLMAncestralSamplingPredictor):
 
         xt_zero = corruption._to_zero_based(x.long())
         t_per_atom = maybe_expand(t, batch_idx)
-        # dt is a 0-d scalar shared by the whole batch; see the base
-        # predictor's identical comment on why plain broadcasting is correct.
+        # dt is a 0-d scalar shared by the batch, so plain broadcasting is
+        # used; maybe_expand needs a batch dimension that dt lacks.
         s_per_atom = t_per_atom + dt
 
         is_masked = xt_zero == corruption.mask_index
@@ -70,13 +67,13 @@ class NeutralMDLMAncestralSamplingPredictor(MDLMAncestralSamplingPredictor):
         u = reveal_prob(corruption.schedule, t_per_atom, s_per_atom.clamp(min=0.0))
         reveal = is_masked & (force_reveal | (torch.rand_like(u) < u))
 
-        # One-hot logits at a jointly-sampled charge-neutral clean assignment;
-        # x is 1-based here, NeutralSampler handles the offset internally.
+        # One-hot logits at a jointly sampled neutral clean assignment. x is
+        # passed 1-based; NeutralSampler handles the offset.
         class_logits = self.neutral_sampler(score, x, t, batch_idx)
         revealed_clean = torch.argmax(class_logits, dim=-1)  # 0-based
 
-        # Once a single joint sample has been drawn, there is no separate
-        # posterior mean to report distinct from that same sample.
+        # There is no separate posterior mean for a joint sample, so the
+        # sample is also reported as the mean.
         x_next = torch.where(reveal, revealed_clean, xt_zero)
         x_expected = x_next
 

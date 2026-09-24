@@ -1,6 +1,8 @@
-"""species_dataset.py
+"""Crystal dataset over the species vocabulary.
 
-SpeciesCrystalDataset for training MatterGen on a species (element + OS) vocabulary.
+Each atom type is a species, an (element, oxidation state) pair. Species
+indices are 1-based and are stored in ``ChemGraph.atomic_numbers`` in place of
+atomic numbers.
 """
 
 from __future__ import annotations
@@ -26,13 +28,13 @@ from mattergen.common.utils.globals import MAX_ATOMIC_NUM, PROPERTY_SOURCE_IDS
 
 OXIDATION_STATES_FILE = "oxidation_states.npy"
 
-# Bounds matching neutral_layer.data.vocab.OS_VALUES (single source of truth).
+# Bounds come from neutral_layer.data.vocab.OS_VALUES, the single source of truth.
 _OS_MIN: int = min(OS_VALUES)
 _OS_MAX: int = max(OS_VALUES)
 _OS_OFFSET: int = -_OS_MIN  # shift so _OS_MIN maps to column 0
 _OS_COLS: int = _OS_MAX - _OS_MIN + 1  # 14 columns
 
-# Upper bound on atomic numbers; matches MAX_ATOMIC_NUM in mattergen.common.utils.globals.
+# Upper bound on atomic numbers, matching MAX_ATOMIC_NUM in mattergen.common.utils.globals.
 _Z_MAX: int = MAX_ATOMIC_NUM
 
 
@@ -41,28 +43,11 @@ def _build_species_indices(
     oxidation_states: numpy.typing.NDArray,
     vocab: SpeciesVocab,
 ) -> tuple[numpy.typing.NDArray, numpy.typing.NDArray]:
-    """Map parallel flat arrays of atomic numbers and OS to 1-based species indices.
+    """Map flat ``[N_atoms]`` atomic numbers and oxidation states to species indices.
 
-    Uses a 2D lookup table for O(N) vectorised mapping. A value of 0 in the
-    returned indices array marks atoms whose (z, os) pair is absent from the
-    vocabulary; callers decide how to handle these (raise or filter).
-
-    Parameters
-    ----------
-    atomic_numbers
-        Flat int64 array of 1-based atomic numbers, shape [N_atoms].
-    oxidation_states
-        Flat int64 array of oxidation states, shape [N_atoms].
-    vocab
-        Species vocabulary defining valid (z, os) pairs and their indices.
-
-    Returns
-    -------
-    species_indices
-        Flat int64 array of 1-based species indices, shape [N_atoms].
-        Entries are 0 for atoms with unknown (z, os) pairs.
-    invalid_mask
-        Boolean array, shape [N_atoms]. True where the (z, os) pair is not in vocab.
+    Returns ``(species_indices, invalid_mask)``, both ``[N_atoms]``. Indices are
+    1-based; ``invalid_mask`` is True, and the index 0, where the (z, os) pair
+    is not in the vocabulary. Callers decide whether to raise or filter.
     """
     lookup = np.zeros((_Z_MAX + 1, _OS_COLS), dtype=np.int64)
     for (z, oxs), idx in vocab.species_to_idx.items():
@@ -82,30 +67,12 @@ def _build_species_indices(
 
 @dataclass(frozen=True, kw_only=True)
 class SpeciesCrystalDataset(BaseDataset):
-    """Dataset for crystal structures using a species (element + OS) vocabulary.
+    """Species-vocabulary counterpart of ``CrystalDataset``.
 
-    Mirrors CrystalDataset but stores 1-based species indices in ChemGraph.atomic_numbers.
-    Use from_cache_path to load from a directory containing the standard MatterGen
-    .npy files plus oxidation_states.npy.
-
-    Attributes
-    ----------
-    pos
-        Fractional coordinates, shape [N_atoms_total, 3].
-    cell
-        Lattice matrices, shape [N_structures, 3, 3].
-    species_indices
-        1-based species indices, shape [N_atoms_total]. Precomputed at load time.
-    num_atoms
-        Number of atoms per structure, shape [N_structures].
-    structure_id
-        Structure identifiers, shape [N_structures].
-    vocab
-        Species vocabulary used to interpret species_indices.
-    properties
-        Per-structure property arrays, keyed by PropertySourceId.
-    transforms
-        Per-sample transforms applied sequentially in __getitem__.
+    Stores 1-based ``species_indices`` ``[N_atoms_total]`` and returns them as
+    ``ChemGraph.atomic_numbers``. ``pos`` is ``[N_atoms_total, 3]`` fractional
+    coordinates; ``cell``, ``num_atoms``, ``structure_id`` and each property
+    array are per structure. Build with ``from_cache_path``.
     """
 
     pos: numpy.typing.NDArray
@@ -185,45 +152,20 @@ class SpeciesCrystalDataset(BaseDataset):
         max_atoms: int = 200,
         mv_elements: frozenset[str] | None = MIXED_VALENCE_ELEMENTS,
     ) -> "SpeciesCrystalDataset":
-        """Load a SpeciesCrystalDataset from a directory of .npy files.
+        """Load from the standard MatterGen ``.npy`` files plus ``oxidation_states.npy``.
 
-        Reads the standard MatterGen files (pos.npy, cell.npy, atomic_numbers.npy,
-        num_atoms.npy, structure_id.npy) plus oxidation_states.npy, then maps each
-        (atomic_number, os) pair to a 1-based species index via vocab. Six rules
-        are validated; a structure violating any rule raises immediately rather than being
-        silently dropped, since this data should already have been through preprocessing.
+        Properties are read from ``{name}.json`` in ``cache_path``; a missing
+        file raises ``FileNotFoundError``. The data is expected to be
+        preprocessed already, so any structure that breaks one of the following
+        rules raises ``DatasetValidationError`` rather than being dropped:
 
-        Parameters
-        ----------
-        cache_path
-            Directory containing the .npy files.
-        vocab
-            Species vocabulary for mapping (atomic_number, os) to indices.
-        transforms
-            Per-sample transforms applied in __getitem__.
-        properties
-            Property names to load from {prop}.json files in cache_path.
-        max_atoms
-            Structures with more atoms than this threshold raise
-            ``DatasetValidationError`` (``ViolationCode.MAX_ATOMS``).
-        mv_elements
-            Elements permitted to carry more than one distinct OS per compound.
-            Structures where any other element appears with multiple OS values
-            raise ``DatasetValidationError`` (``ViolationCode.MIXED_VALENCE``).
-            Pass ``None`` to disable this check.
-
-        Returns
-        -------
-        dataset
-            Loaded SpeciesCrystalDataset.
-
-        Raises
-        ------
-        FileNotFoundError
-            If any required .npy file or property .json file is missing.
-        neutral_layer.data.filtering.DatasetValidationError
-            If any structure violates one of the 6 rules above (see module
-            docstring for the specific ViolationCode raised per rule).
+        1. more than ``max_atoms`` atoms (``MAX_ATOMS``);
+        2. metal-only with a non-zero OS (``ALLOY_NONZERO_OS``);
+        3. a single non-metal element (``SINGLE_SPECIES``);
+        4. a (z, os) pair not in ``vocab`` (``UNKNOWN_SPECIES``);
+        5. non-zero total charge (``CHARGE_NON_NEUTRAL``);
+        6. an element outside ``mv_elements`` with more than one distinct OS
+           (``MIXED_VALENCE``); skipped when ``mv_elements`` is None.
         """
         cache_path = str(cache_path)
 
@@ -231,8 +173,7 @@ class SpeciesCrystalDataset(BaseDataset):
             path = os.path.join(cache_path, filename)
             if not os.path.exists(path):
                 raise FileNotFoundError(f"Required file not found: {path}")
-            # allow_pickle=True is needed for structure_id arrays which are stored
-            # as numpy object arrays (string IDs like "mp-1234").
+            # structure_id is stored as a numpy object array of strings.
             return np.load(path, allow_pickle=True)
 
         pos = _load(CORE_STRUCTURE_FILE_NAMES["pos"])
@@ -246,7 +187,6 @@ class SpeciesCrystalDataset(BaseDataset):
             raw_atomic_numbers, oxidation_states, vocab
         )
 
-        # Build per-atom → per-structure mapping and cumulative atom offsets.
         atom_struct_idx = np.repeat(np.arange(len(num_atoms)), num_atoms)
         offsets = np.concatenate([[0], np.cumsum(num_atoms)])
 
@@ -274,7 +214,6 @@ class SpeciesCrystalDataset(BaseDataset):
         )
 
         # ── Rule 2: alloy check ──────────────────────────────────────────────
-        # Metallic-only structures are only valid when every atom carries OS=0.
         # Non-zero OS on a metal-only compound is an ICSD artefact.
         is_metal_atom = np.array(
             [z in METAL_ATOMIC_NUMBERS for z in raw_atomic_numbers.tolist()]
@@ -291,11 +230,9 @@ class SpeciesCrystalDataset(BaseDataset):
         )
 
         # ── Rule 3: single-species ───────────────────────────────────────────
-        # Single-species alloys (e.g. elemental Fe, Cu) are valid -- OS=0 is a
-        # well-defined answer for a pure metal, and Rule 2 above already
-        # guarantees any metal-only structure reaching this point has OS=0.
-        # Single-species non-metals are still rejected: OS is undefined for a
-        # lone non-metal element with no counter-ion.
+        # Pure metals (e.g. Fe, Cu) are valid with OS=0, which Rule 2 has
+        # already enforced. A lone non-metal has no counter-ion, so its OS is
+        # undefined.
         single_species_bad = np.zeros(len(num_atoms), dtype=bool)
         for i in range(len(num_atoms)):
             s, e = int(offsets[i]), int(offsets[i + 1])
@@ -330,8 +267,9 @@ class SpeciesCrystalDataset(BaseDataset):
             )
 
         # ── Rule 5: non-neutral structures ───────────────────────────────────
-        # Non-neutral structures cause log_z = -inf for all timesteps once
-        # their atoms are committed, triggering NaN in the SPL backward pass.
+        # Once its atoms are committed, a non-neutral structure has log Z = -inf
+        # under the structured output layer, giving NaN gradients in the
+        # structured loss.
         charge_per_struct = np.zeros(len(num_atoms), dtype=np.int64)
         np.add.at(charge_per_struct, atom_struct_idx, oxidation_states)
         _raise_if_any(
@@ -341,7 +279,6 @@ class SpeciesCrystalDataset(BaseDataset):
         )
 
         # ── Rule 6: MV element registry ──────────────────────────────────────
-        # Non-MV elements must carry exactly one distinct OS per structure.
         if mv_elements is not None:
             from pymatgen.core import Element as _PmgEl
 
