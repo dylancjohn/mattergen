@@ -17,12 +17,10 @@ from pymatgen.core.structure import Structure
 from pymatgen.entries.compatibility import Compatibility, MaterialsProject2020Compatibility
 from typing_extensions import Self
 
-import mattergen.evaluation.metrics.diversity as diversity_metrics
 import mattergen.evaluation.metrics.energy as energy_metrics
 import mattergen.evaluation.metrics.property as property_metrics
 import mattergen.evaluation.metrics.structure as structure_metrics
 from mattergen.evaluation.metrics.core import BaseAggregateMetric, BaseMetric, BaseMetricsCapability
-from mattergen.evaluation.metrics.diversity import DiversityMetricsCapability
 from mattergen.evaluation.metrics.energy import EnergyMetricsCapability, MissingTerminalsError
 from mattergen.evaluation.metrics.property import PropertyMetricsCapability
 from mattergen.evaluation.metrics.structure import StructureMetricsCapability
@@ -60,14 +58,9 @@ class MetricsEvaluator:
     This class is used to evaluate a set of metrics on a set of structures.
     """
 
-    def __init__(
-        self,
-        capabilities: Sequence[BaseMetricsCapability],
-        compute_proxy_metrics: bool = False,
-    ):
+    def __init__(self, capabilities: Sequence[BaseMetricsCapability]):
         assert len(capabilities) > 0, "At least one capability is required."
         self.capabilities = capabilities
-        self.compute_proxy_metrics = compute_proxy_metrics
 
         self._metrics: dict[
             Type[BaseMetric], BaseMetric
@@ -81,14 +74,6 @@ class MetricsEvaluator:
         structure_matcher: OrderedStructureMatcher
         | DisorderedStructureMatcher = DefaultDisorderedStructureMatcher(),
         n_failed_jobs: int = 0,
-        compute_proxy_metrics: bool = False,
-        exclude_alloys_and_single_element: bool = True,
-        exclude_nonchargeable: bool = True,
-        consensus: int = 3,
-        struc_cutoff: float = 0.4,
-        comp_cutoff: float = 10.0,
-        wasserstein_n_samples: int = 1000,
-        wasserstein_seed: int = 0,
     ) -> Self:
         """Instantiate MetricsEvaluator from a list of structures. This is useful for computing structure-based metrics."""
 
@@ -102,26 +87,8 @@ class MetricsEvaluator:
             reference_dataset=reference,
             structure_matcher=structure_matcher,
             n_failed_jobs=n_failed_jobs,
-            exclude_alloys_and_single_element=exclude_alloys_and_single_element,
-            exclude_nonchargeable=exclude_nonchargeable,
-            consensus=consensus,
         )
-        capabilities: list[BaseMetricsCapability] = [structure_capability]
-        # Skipped unless asked for: its fingerprints are expensive and are computed
-        # eagerly by `as_dataframe` even when no diversity metric is requested.
-        if compute_proxy_metrics:
-            capabilities.append(
-                DiversityMetricsCapability(
-                    structure_summaries=structure_summaries,
-                    reference_dataset=reference,
-                    struc_cutoff=struc_cutoff,
-                    comp_cutoff=comp_cutoff,
-                    wasserstein_n_samples=wasserstein_n_samples,
-                    wasserstein_seed=wasserstein_seed,
-                    n_failed_jobs=n_failed_jobs,
-                )
-            )
-        return cls(capabilities=capabilities, compute_proxy_metrics=compute_proxy_metrics)
+        return cls(capabilities=[structure_capability])
 
     @classmethod
     def from_structures_and_energies(
@@ -137,14 +104,6 @@ class MetricsEvaluator:
         | DisorderedStructureMatcher = DefaultDisorderedStructureMatcher(),
         energy_correction_scheme: Compatibility = MaterialsProject2020Compatibility(),
         n_failed_jobs: int = 0,
-        compute_proxy_metrics: bool = False,
-        exclude_alloys_and_single_element: bool = True,
-        exclude_nonchargeable: bool = True,
-        consensus: int = 3,
-        struc_cutoff: float = 0.4,
-        comp_cutoff: float = 10.0,
-        wasserstein_n_samples: int = 1000,
-        wasserstein_seed: int = 0,
     ) -> Self:
 
         if reference is None:
@@ -170,14 +129,6 @@ class MetricsEvaluator:
             property_constraints=property_constraints,
             structure_matcher=structure_matcher,
             n_failed_jobs=n_failed_jobs,
-            compute_proxy_metrics=compute_proxy_metrics,
-            exclude_alloys_and_single_element=exclude_alloys_and_single_element,
-            exclude_nonchargeable=exclude_nonchargeable,
-            consensus=consensus,
-            struc_cutoff=struc_cutoff,
-            comp_cutoff=comp_cutoff,
-            wasserstein_n_samples=wasserstein_n_samples,
-            wasserstein_seed=wasserstein_seed,
         )
 
     @classmethod
@@ -190,14 +141,6 @@ class MetricsEvaluator:
         structure_matcher: OrderedStructureMatcher
         | DisorderedStructureMatcher = DefaultDisorderedStructureMatcher(),
         n_failed_jobs: int = 0,
-        compute_proxy_metrics: bool = False,
-        exclude_alloys_and_single_element: bool = True,
-        exclude_nonchargeable: bool = True,
-        consensus: int = 3,
-        struc_cutoff: float = 0.4,
-        comp_cutoff: float = 10.0,
-        wasserstein_n_samples: int = 1000,
-        wasserstein_seed: int = 0,
     ) -> Self:
 
         if reference is None:
@@ -212,25 +155,8 @@ class MetricsEvaluator:
                 reference_dataset=reference,
                 structure_matcher=structure_matcher,
                 n_failed_jobs=n_failed_jobs,
-                exclude_alloys_and_single_element=exclude_alloys_and_single_element,
-                exclude_nonchargeable=exclude_nonchargeable,
-                consensus=consensus,
             )
             capabilities.append(structure_capability)
-            # Skipped unless asked for: its fingerprints are expensive and are computed
-            # eagerly by `as_dataframe` even when no diversity metric is requested.
-            if compute_proxy_metrics:
-                capabilities.append(
-                    DiversityMetricsCapability(
-                        structure_summaries=structure_summaries,
-                        reference_dataset=reference,
-                        struc_cutoff=struc_cutoff,
-                        comp_cutoff=comp_cutoff,
-                        wasserstein_n_samples=wasserstein_n_samples,
-                        wasserstein_seed=wasserstein_seed,
-                        n_failed_jobs=n_failed_jobs,
-                    )
-                )
             try:
                 energy_capability = EnergyMetricsCapability(
                     structure_summaries=structure_summaries,
@@ -252,7 +178,7 @@ class MetricsEvaluator:
             )
             capabilities.append(property_capability)
 
-        return cls(capabilities=capabilities, compute_proxy_metrics=compute_proxy_metrics)
+        return cls(capabilities=capabilities)
 
     @cached_property
     def available_capability_types(self) -> frozenset[Type[BaseMetricsCapability]]:
@@ -264,7 +190,6 @@ class MetricsEvaluator:
             metric
             for metric in get_all_metrics_classes()
             if all(cap in self.available_capability_types for cap in metric.required_capabilities)
-            and (self.compute_proxy_metrics or not metric.is_proxy_metric)
         ]
 
     @property
@@ -303,10 +228,6 @@ class MetricsEvaluator:
     def property_capability(self) -> PropertyMetricsCapability:
         return self._get_capability(PropertyMetricsCapability)
 
-    @cached_property
-    def diversity_capability(self) -> DiversityMetricsCapability:
-        return self._get_capability(DiversityMetricsCapability)
-
     CapabilityT = TypeVar("CapabilityT", bound=BaseMetricsCapability)
 
     def _get_capability(self, capability: Type[CapabilityT]) -> CapabilityT:
@@ -324,7 +245,6 @@ class MetricsEvaluator:
                 StructureMetricsCapability.name: None,
                 EnergyMetricsCapability.name: None,
                 PropertyMetricsCapability.name: None,
-                DiversityMetricsCapability.name: None,
             }
             capabilities.update({capability.name: capability for capability in self.capabilities})
             self._metrics[metric] = metric(**capabilities)
@@ -429,7 +349,7 @@ def get_all_metrics_classes() -> list[Type[BaseMetric]]:
     """Returns all metrics classes, except for base classes."""
     clsmembers: list[list[tuple[str, Type]]] = [
         getmembers(module, isclass)
-        for module in [diversity_metrics, energy_metrics, property_metrics, structure_metrics]
+        for module in [energy_metrics, property_metrics, structure_metrics]
     ]
     metric_classes = [
         x[1]

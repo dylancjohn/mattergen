@@ -1,12 +1,10 @@
-"""Composition/structure fingerprints and coverage, for the CDVAE-style diversity metrics.
+"""Composition/structure fingerprints and coverage for the CDVAE-style diversity metrics.
 
-These are the fingerprints and coverage computation CDVAE introduced and DiffCSP, CrystalFlow and
-FlowMM all reuse verbatim (`CrystalFlow`'s `eval_utils.py` is a near-verbatim fork of DiffCSP's;
-`flowmm`'s `old_eval/generation_metrics.py` imports `compute_cov` directly from `diffcsp.eval_utils`).
+These match the definitions introduced by CDVAE.
 Reproduced here from:
 https://github.com/jiaor17/DiffCSP/blob/main/scripts/eval_utils.py
 https://github.com/jiaor17/DiffCSP/blob/main/diffcsp/common/constants.py
-(MIT license; see `mattergen.evaluation.metrics.diversity` for the metrics built on top of these).
+(MIT license). The metrics built on these are in `mattergen.evaluation.evaluate_os`.
 """
 
 from __future__ import annotations
@@ -20,9 +18,9 @@ from pymatgen.core.structure import Structure
 _COMPOSITION_FEATURIZER = ElementProperty.from_preset("magpie")
 _STRUCTURE_FEATURIZER = CrystalNNFingerprint.from_preset("ops")
 
-# Fixed per-feature mean/std for the 132-dim magpie composition fingerprint above, fit once on
-# CDVAE's training data and reused unchanged since by every downstream fork (DiffCSP, CrystalFlow,
-# FlowMM) -- not refit here, for exact comparability with the numbers those papers/repos report.
+# Fixed per-feature mean/std for the 132-dim magpie composition fingerprint, fit on CDVAE's
+# training data and reused unchanged by DiffCSP, CrystalFlow and FlowMM. Deliberately not refit, so
+# that coverage is comparable with the numbers those papers report.
 COMPOSITION_FINGERPRINT_MEANS = np.array([
     21.194441759304013, 58.20212663122281, 37.0076848719188, 36.52738520455582,
     13.350626389725019, 29.468922184630255, 28.71735137747704, 78.8868535524408,
@@ -97,17 +95,22 @@ COMPOSITION_FINGERPRINT_STDS = np.array([
 
 def composition_fingerprint(composition: Composition) -> np.ndarray:
     """132-dim magpie composition fingerprint, standardized by the fixed
-    `COMPOSITION_FINGERPRINT_MEANS`/`STDS` (NaN results -- e.g. an element magpie has no data for --
-    replaced with 0, matching upstream's `StandardScaler(replace_nan_token=0.)`)."""
+    `COMPOSITION_FINGERPRINT_MEANS`/`STDS`.
+
+    NaNs (e.g. an element magpie has no data for) become 0, matching DiffCSP's
+    `StandardScaler(replace_nan_token=0.)`.
+    """
     raw = np.array(_COMPOSITION_FEATURIZER.featurize(composition), dtype=float)
     scaled = (raw - COMPOSITION_FINGERPRINT_MEANS) / COMPOSITION_FINGERPRINT_STDS
     return np.where(np.isnan(scaled), 0.0, scaled)
 
 
 def structure_fingerprint(structure: Structure) -> np.ndarray | None:
-    """Structure fingerprint: CrystalNN "ops" local-environment fingerprint per site, averaged over
-    all sites. `None` if fingerprinting raises (e.g. degenerate/pathological geometry) -- such
-    structures are simply excluded from coverage, not judged invalid by this function."""
+    """CrystalNN "ops" local-environment fingerprint, averaged over sites.
+
+    Returns `None` if fingerprinting raises (e.g. degenerate geometry). Such structures are
+    excluded from the coverage distance search, not judged invalid here.
+    """
     try:
         site_fps = [_STRUCTURE_FEATURIZER.featurize(structure, i) for i in range(len(structure))]
     except Exception:
@@ -123,12 +126,15 @@ def compute_coverage(
     struc_cutoff: float,
     comp_cutoff: float,
 ) -> tuple[float, float]:
-    """(cov_recall, cov_precision): the fraction of `ref` fingerprints with a `gen` match within
-    both cutoffs, and the fraction of `gen` fingerprints with a `ref` match within both cutoffs.
-    Entries with a `None` structure fingerprint are dropped from the pairwise-distance search on
-    whichever side they occur, but `cov_precision`'s denominator is `len(gen_struct_fps)` (every
-    generated structure, not just the fingerprinted subset), matching upstream's `compute_cov`
-    (`num_gen_crystals`).
+    """Return `(cov_recall, cov_precision)`.
+
+    Recall is the fraction of reference structures with a generated match, and precision the
+    fraction of generated structures with a reference match, where a match needs both the
+    structure and composition fingerprint distances within their cutoffs. Entries with a `None`
+    structure fingerprint are dropped from the distance search on either side. The precision
+    denominator is still every generated structure, as in DiffCSP's `compute_cov`, whereas the
+    recall denominator is the fingerprinted reference subset. Both are 0 if either side has no
+    fingerprinted entries.
     """
     from scipy.spatial.distance import cdist
 

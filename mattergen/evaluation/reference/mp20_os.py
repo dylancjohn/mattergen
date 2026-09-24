@@ -1,10 +1,8 @@
 """Reference dataset built from an mp-20-os split.
 
-Wraps the flat per-atom arrays each mp-20-os split is stored as (see
-`mattergen/datasets/mp-20-os/`) into a `ReferenceDataset`, so it can be passed as `evaluate()`'s
-`reference` argument wherever a comparison against mp-20-os itself -- rather than the default
-Alex-MP/MP2020 reference -- is wanted (e.g. `OxidationStateDistance`, or novelty/uniqueness
-against the training distribution specifically).
+Wraps a split's flat per-atom ``.npy`` arrays in a `ReferenceDataset`: the reference for
+`mattergen.evaluation.evaluate_os`, and usable as `evaluate()`'s `reference` for novelty and
+uniqueness against the training distribution rather than the default Alex-MP/MP2020 reference.
 """
 
 from __future__ import annotations
@@ -21,10 +19,9 @@ from mattergen.evaluation.reference.reference_dataset import ReferenceDataset
 def load_mp20_os_reference_dataset(mp20_os_dir: str | Path, split: str) -> ReferenceDataset:
     """Build a `ReferenceDataset` from one mp-20-os split (`"train"`, `"val"` or `"test"`).
 
-    Every entry is given a dummy `energy=0.0`: mp-20-os carries no DFT energies on disk. The
-    resulting dataset is therefore only valid for structure/composition-based metrics (novelty,
-    uniqueness, precision, recall, `OxidationStateDistance`) -- never for anything energy-based
-    (stability, energy above hull).
+    mp-20-os stores no DFT energies, so every entry gets a dummy `energy=0.0`. Use it only for
+    structure- and composition-based metrics (e.g. novelty, uniqueness, coverage, oxidation-state
+    distance), never energy-based ones (stability, energy above hull).
     """
     split_dir = Path(mp20_os_dir) / split
     atomic_numbers = np.load(split_dir / "atomic_numbers.npy")
@@ -36,12 +33,9 @@ def load_mp20_os_reference_dataset(mp20_os_dir: str | Path, split: str) -> Refer
     entries = []
     for i in range(len(num_atoms)):
         start, end = int(offsets[i]), int(offsets[i + 1])
-        # `pos.npy` holds *fractional* coordinates -- that is what `dataset.py` writes
-        # (`structure_infos["pos"].append(struct.frac_coords)`) and what every other reader in
-        # the codebase assumes (`CrystalDataset` applies `% 1.0`; `eval_utils.get_crystals_list`
-        # builds with `coords_are_cartesian=False`). Reading them as Cartesian collapses every
-        # reference structure into a blob near the origin, silently destroying the geometry that
-        # fingerprint- and StructureMatcher-based metrics depend on.
+        # `pos.npy` holds fractional coordinates, as for `CrystalDataset`. Reading them as
+        # Cartesian would collapse every structure near the origin and silently break the
+        # fingerprint- and StructureMatcher-based metrics.
         structure = Structure(
             Lattice(cell[i]), atomic_numbers[start:end], pos[start:end], coords_are_cartesian=False
         )

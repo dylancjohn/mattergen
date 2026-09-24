@@ -29,7 +29,6 @@ def evaluate(
     device: str = str(get_device()),
     structures_output_path: str | None = None,
     energy_correction_scheme: Compatibility = MaterialsProject2020Compatibility(),
-    compute_proxy_metrics: bool = False,
 ) -> dict[str, float | int]:
     """Evaluate the structures against a reference dataset.
 
@@ -45,10 +44,6 @@ def evaluate(
         device: Device to use for relaxation.
         structures_output_path: Path to save the relaxed structures.
         energy_correction_scheme: Energy correction scheme to use for computing energy-based metrics. Must be compatible with the reference dataset used (e.g., MP2020correction reference dataset requires MP2020 energy correction scheme).
-        compute_proxy_metrics: Also compute the CDVAE/DiffCSP-style proxy metrics (coverage,
-            Wasserstein distances, oxidation-state metrics). Off by default: they are only
-            meaningful against the MP-20 test split rather than the full reference dataset
-            used here, so they are normally computed separately on the relaxed structures.
 
     Returns:
         metrics: a dictionary of metrics and their values.
@@ -59,10 +54,9 @@ def evaluate(
         relaxed_structures, energies, keep_idx = relax_structures(
             structures, device=device, potential_load_path=potential_load_path, output_path=structures_output_path
         )
-        # relax_structures may skip structures with a degenerate unit cell; keep
-        # them counted as failed jobs (via n_failed_jobs below) rather than
-        # dropped from the reported metrics, and subset the originals to match
-        # so structures/original_structures/energies stay index-aligned.
+        # relax_structures skips structures with a degenerate unit cell. Count them
+        # as failed jobs rather than silently dropping them, and subset the originals
+        # so structures, original_structures and energies stay index-aligned.
         original_structures = [structures[i] for i in keep_idx]
         n_failed_jobs = len(structures) - len(keep_idx)
     else:
@@ -70,10 +64,9 @@ def evaluate(
         original_structures = structures
         n_failed_jobs = 0
 
-    # Strip oxidation states before metric computation. Structure matching against
-    # the reference dataset (which has plain Element sites) requires OS-free
-    # structures; leaving Species sites would inflate novelty and uniqueness scores.
-    # The OS-decorated structures are still returned by relax_structures for saving.
+    # The reference dataset has plain Element sites, so Species sites would never
+    # match it and would inflate novelty and uniqueness. relax_structures still
+    # returns the OS-decorated structures for saving.
     def _strip_os(strucs: list[Structure]) -> list[Structure]:
         stripped = []
         for s in strucs:
@@ -90,7 +83,6 @@ def evaluate(
         reference=reference,
         structure_matcher=structure_matcher,
         energy_correction_scheme=energy_correction_scheme,
-        compute_proxy_metrics=compute_proxy_metrics,
     )
     metrics = evaluator.compute_metrics(
         metrics=evaluator.available_metrics,
