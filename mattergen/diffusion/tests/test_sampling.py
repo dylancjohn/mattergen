@@ -105,9 +105,10 @@ def test_corrector(make_state_batch: Callable, corrector_type: Type, sde_type, E
         old_x: torch.Tensor = tiny_state_batch["foo"]
 
         corrector: pc.LangevinCorrector = corrector_type(sde, score_fn=dummy_score_fn, n_steps=5)
+        dt = torch.tensor(-(sde.T - EPS) / 50)
 
         x, x_mean = corrector.update_fn(
-            x=old_x, t=t, batch_idx=tiny_state_batch.get_batch_idx("foo")
+            x=old_x, t=t, dt=dt, batch_idx=tiny_state_batch.get_batch_idx("foo")
         )
 
         assert x.shape == x_mean.shape == old_x.shape
