@@ -7,7 +7,7 @@ read from CIFs so that per-site oxidation states are available. The metrics are:
 * validity: ``comp_valid``, ``struct_valid`` and ``valid`` (CDVAE/DiffCSP
   definitions over all structures, where ``valid`` also requires a structure
   fingerprint) and ``comp_valid_non_alloy_or_single_element`` (excluding
-  alloys and single-element structures);
+  alloys and single-element structures, and without SMACT's alloy shortcut);
 * oxidation states: ``frac_alloy_or_single_element``, ``frac_charge_neutral``,
   ``avg_oxidation_state_frequency_score`` and ``oxidation_state_distance``,
   with alloys and single-element structures excluded;
@@ -290,17 +290,23 @@ def _marginalized_distribution(
     return aggregate_marginalized_distribution(occurrences[c] for c in non_alloy)
 
 
-def _validity_flags(structure: Structure) -> tuple[bool, bool, bool]:
-    """``(comp_valid, struct_valid, unknown_element)`` for one structure.
+def _validity_flags(structure: Structure) -> tuple[bool, bool, bool, bool]:
+    """``(comp_valid, charge_balanced, struct_valid, unknown_element)`` for one structure.
 
-    SMACT raises ``TypeError`` for elements it has no data for; such a
-    composition is counted as invalid and reported by the caller.
+    ``charge_balanced`` is SMACT validity without its alloy shortcut. SMACT
+    raises ``TypeError`` for elements it has no data for; such a composition
+    is counted as invalid and reported by the caller.
     """
     struct_valid = bool(structure_validity(structure))
     try:
-        return bool(is_smact_valid(structure)), struct_valid, False
+        return (
+            bool(is_smact_valid(structure)),
+            bool(is_smact_valid(structure, include_alloys=False)),
+            struct_valid,
+            False,
+        )
     except TypeError:
-        return False, struct_valid, True
+        return False, False, struct_valid, True
 
 
 def _frac_charge_neutral(
@@ -402,10 +408,11 @@ def evaluate_os(
 
     flags = parallel_map(_validity_flags, structures, n_jobs)
     comp_valid = np.array([f[0] for f in flags], dtype=bool)
-    struct_valid = np.array([f[1] for f in flags], dtype=bool)
+    charge_balanced = np.array([f[1] for f in flags], dtype=bool)
+    struct_valid = np.array([f[2] for f in flags], dtype=bool)
     # As in DiffCSP's `Crystal`, a structure that cannot be fingerprinted is invalid.
     valid = comp_valid & struct_valid & np.array([fp is not None for fp in struct_fps], dtype=bool)
-    n_unknown = sum(f[2] for f in flags)
+    n_unknown = sum(f[3] for f in flags)
     if n_unknown:
         logger.warning(f"{n_unknown} structure(s) contain elements unknown to SMACT; counted as invalid.")
     # Parse failures stay in cov_precision's denominator as unmatched structures.
@@ -435,7 +442,7 @@ def evaluate_os(
         "struct_valid": float(struct_valid.sum() / n_total),
         "valid": float(valid.sum() / n_total),
         "comp_valid_non_alloy_or_single_element": (
-            float(comp_valid[~alloy_mask].sum() / n_non_alloy) if n_non_alloy else float("nan")
+            float(charge_balanced[~alloy_mask].sum() / n_non_alloy) if n_non_alloy else float("nan")
         ),
         "frac_charge_neutral": _frac_charge_neutral(labels, alloy_mask, n_parse_failures),
         "avg_oxidation_state_frequency_score": (

@@ -419,7 +419,7 @@ class FracNovelSystems(BaseStructureMetric):
 # -----------------------------#
 
 
-def is_smact_valid(structure: Structure) -> bool:
+def is_smact_valid(structure: Structure, include_alloys: bool = True) -> bool:
     """
     Returns True if the structure is valid according to the
     smact validity checker else False.
@@ -431,14 +431,14 @@ def is_smact_valid(structure: Structure) -> bool:
     counts = counts / np.gcd.reduce(counts)
     comps: tuple[int, ...] = tuple(np.array(counts).astype("int"))
     try:
-        return smact_validity(comp=elems, count=comps, use_pauling_test=True, include_alloys=True)
+        return smact_validity(comp=elems, count=comps, use_pauling_test=True, include_alloys=include_alloys)
     except TypeError:
         raise TypeError(
             f"SMACT validity checker failed. Check that all elements {structure.composition} present in the structure are also present in smact.element_dictionary()."
         )
     # HOTFIX: decode error sometimes occurrs the first time the smact_validity function is called, but not after that
     except UnicodeDecodeError:
-        return smact_validity(comp=elems, count=comps, use_pauling_test=True, include_alloys=True)
+        return smact_validity(comp=elems, count=comps, use_pauling_test=True, include_alloys=include_alloys)
 
 
 def smact_validity(
